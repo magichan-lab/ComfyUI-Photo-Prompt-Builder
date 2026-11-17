@@ -50,6 +50,25 @@ class TestHistory(unittest.TestCase):
         self.h.add_entries({'subject': '  '})
         self.assertEqual(self.h.read_history()['subject'], [])
 
+    def test_split_fields_have_independent_history(self):
+        self.h.add_entries({
+            'appearance': 'White shirt', 'hair_makeup': 'Short hair',
+            'pose': 'Standing', 'expression': 'Smiling',
+        })
+        history = self.h.read_history()
+        self.assertEqual(history['appearance'], ['White shirt'])
+        self.assertEqual(history['hair_makeup'], ['Short hair'])
+        self.assertEqual(history['pose'], ['Standing'])
+        self.assertEqual(history['expression'], ['Smiling'])
+
+    def test_existing_history_loads_with_new_fields(self):
+        self.h.FILE.write_text('{"version": 1, "history": {"appearance": ["Old look"], "pose": ["Old pose"]}}', encoding='utf-8')
+        history = self.h.read_history()
+        self.assertEqual(history['appearance'], ['Old look'])
+        self.assertEqual(history['pose'], ['Old pose'])
+        self.assertEqual(history['hair_makeup'], [])
+        self.assertEqual(history['expression'], [])
+
 
 class TestCompose(unittest.TestCase):
     def test_headings_blank_and_disabled(self):
@@ -73,6 +92,16 @@ class TestCompose(unittest.TestCase):
         output2 = mod.compose_prompt({'subject': 'A woman', 'lighting': 'soft light'},
                                      {'subject': True, 'lighting': True})
         self.assertEqual(output2, 'Subject:\nA woman\n\nLighting:\nsoft light')
+        split = mod.compose_prompt({
+            'appearance': 'White shirt', 'hair_makeup': 'Short hair',
+            'pose': 'Standing', 'expression': 'Smiling',
+        }, {})
+        self.assertEqual(split, 'Clothing:\nWhite shirt\n\nHair & Makeup:\nShort hair'
+                         '\n\nPosing:\nStanding\n\nExpression:\nSmiling')
+        inputs = mod.Krea2PhotoPromptBuilder.INPUT_TYPES()['required']
+        for field in ('appearance', 'hair_makeup', 'pose', 'expression'):
+            self.assertIn(field, inputs)
+            self.assertIn(f'use_{field}', inputs)
 
 
 if __name__ == '__main__':

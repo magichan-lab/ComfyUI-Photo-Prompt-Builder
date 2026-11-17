@@ -2,7 +2,7 @@
 
 [日本語版 README](README.ja.md)
 
-A single ComfyUI node that builds a labeled, seven-section photography prompt and keeps category-specific input history in a local JSON file.
+A single ComfyUI node that builds a labeled, nine-section photography prompt and keeps category-specific input history in a local JSON file.
 
 ## Installation
 
@@ -18,8 +18,10 @@ The internal ComfyUI node ID is `MagichanLab_Krea2PhotoPromptBuilder`. Workflows
 ## Inputs
 
 - `subject`: number, age, gender, ethnic background, appearance, build
-- `appearance`: clothing, hair, makeup, accessories
-- `pose`: pose, gesture, expression, gaze
+- `appearance` (Clothing): clothing, accessories
+- `hair_makeup` (Hair & Makeup): hairstyle, makeup
+- `pose` (Posing): pose, gesture
+- `expression` (Expression): expression, gaze
 - `environment`: location, background, props, time
 - `composition`: framing, camera position, lens, depth of field
 - `lighting`: light source, direction, contrast, color temperature
@@ -27,14 +29,19 @@ The internal ComfyUI node ID is `MagichanLab_Krea2PhotoPromptBuilder`. Workflows
 
 Each has a `use_...` toggle. Disabled sections are retained in the workflow and history, but excluded from output. Blank sections are omitted. The `auto_save_history` toggle controls saving nonempty values **when this node executes**; `history_limit` defaults to 100 per field.
 
+The `appearance` and `pose` input keys remain unchanged for existing workflows. If older inputs or history entries contain hair, makeup, or expression details, move those details into the new fields as needed.
+
 ## Output example
 
 ```text
 Subject:
 A Japanese woman in her 30s
 
-Appearance:
-Casual white shirt, black hair
+Clothing:
+Casual white shirt
+
+Hair & Makeup:
+Black hair
 
 Composition & Camera:
 Medium shot, eye-level, 50mm lens
@@ -48,7 +55,7 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 - Click `History: <section> ▾` to open a selectable history dropdown, inspect the full text, apply a value, delete one value, or clear a section's history.
 - Click `Save current values to history` to save immediately (even when `auto_save_history` is off).
 - Click `Preview combined prompt` to inspect/copy the generated prompt without running the sampler.
-- Duplicate values are removed, and the most recently saved entry appears first. Histories are independent for all seven categories.
+- Duplicate values are removed, and the most recently saved entry appears first. Histories are independent for all nine categories.
 - **History is shared by all builder nodes in the same ComfyUI installation.** Current values/toggles are also saved in each ComfyUI workflow.
 
 ## Storage and backup

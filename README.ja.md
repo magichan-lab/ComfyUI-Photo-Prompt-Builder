@@ -1,6 +1,6 @@
 # Krea2 Photo Prompt Builder for ComfyUI
 
-写真用プロンプトをラベル付きの7項目で組み立て、項目ごとの入力履歴をローカルのJSONファイルに保存するComfyUIカスタムノードです。
+写真用プロンプトをラベル付きの9項目で組み立て、項目ごとの入力履歴をローカルのJSONファイルに保存するComfyUIカスタムノードです。
 
 ## インストール
 
@@ -16,8 +16,10 @@ ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`です。�
 ## 入力項目
 
 - `subject`：人数、年齢、性別、民族的背景、容姿、体格
-- `appearance`：服装、髪型、メイク、アクセサリー
-- `pose`：ポーズ、しぐさ、表情、視線
+- `appearance`（Clothing）：服装、アクセサリー
+- `hair_makeup`（Hair & Makeup）：髪型、メーク
+- `pose`（Posing）：ポーズ、しぐさ
+- `expression`（Expression）：表情、視線
 - `environment`：場所、背景、小道具、時間帯
 - `composition`：構図、カメラ位置、レンズ、被写界深度
 - `lighting`：光源、光の方向、コントラスト、色温度
@@ -25,14 +27,19 @@ ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`です。�
 
 各項目には`use_...`切り替えがあります。オフにした項目もワークフローと履歴には残りますが、出力からは除外されます。空欄の項目も出力されません。`auto_save_history`は、このノードの**実行時**に空でない入力を履歴に保存するかを制御します。`history_limit`の初期値は各項目100件です。
 
+既存ワークフローとの互換性のため、`appearance`と`pose`の入力キーは維持しています。以前の入力や履歴に髪型・メーク、表情が含まれる場合は、必要に応じて新しい項目へ移してください。
+
 ## 出力例
 
 ```text
 Subject:
 A Japanese woman in her 30s
 
-Appearance:
-Casual white shirt, black hair
+Clothing:
+Casual white shirt
+
+Hair & Makeup:
+Black hair
 
 Composition & Camera:
 Medium shot, eye-level, 50mm lens
@@ -46,7 +53,7 @@ Medium shot, eye-level, 50mm lens
 - `History: <section> ▾`をクリックすると履歴のドロップダウンが開き、全文の確認、値の適用、個別の削除、項目ごとの履歴の全削除ができます。
 - `Save current values to history`をクリックすると、`auto_save_history`がオフでも現在の値をすぐに保存できます。
 - `Preview combined prompt`をクリックすると、サンプラーを実行せずに生成されるプロンプトを確認・コピーできます。
-- 重複する値は取り除かれ、最後に保存した値が先頭に表示されます。履歴は7項目それぞれ独立しています。
+- 重複する値は取り除かれ、最後に保存した値が先頭に表示されます。履歴は9項目それぞれ独立しています。
 - **履歴は同じComfyUI環境にあるすべてのビルダーノードで共有されます。** 現在の入力値と切り替え状態は、各ComfyUIワークフローにも保存されます。
 
 ## 保存場所とバックアップ

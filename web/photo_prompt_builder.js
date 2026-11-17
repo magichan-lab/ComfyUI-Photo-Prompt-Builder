@@ -4,8 +4,10 @@ import { api } from '../../scripts/api.js';
 const NODE_TYPE = 'MagichanLab_Krea2PhotoPromptBuilder';
 const FIELDS = [
   ['subject', 'Subject'],
-  ['appearance', 'Appearance'],
-  ['pose', 'Pose & Expression'],
+  ['appearance', 'Clothing'],
+  ['hair_makeup', 'Hair & Makeup'],
+  ['pose', 'Posing'],
+  ['expression', 'Expression'],
   ['environment', 'Environment'],
   ['composition', 'Composition & Camera'],
   ['lighting', 'Lighting'],
@@ -195,7 +197,7 @@ app.registerExtension({
       }, { serialize: false });
       this.addWidget('button', 'Preview combined prompt', null,
         () => preview(this), { serialize: false });
-      this.setSize([Math.max(this.size[0], 430), Math.max(this.size[1], 760)]);
+      this.setSize([Math.max(this.size[0], 430), Math.max(this.size[1], 920)]);
       return result;
     };
   },

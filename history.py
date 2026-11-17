@@ -4,7 +4,8 @@ import os
 from pathlib import Path
 from threading import RLock
 
-FIELDS = ('subject', 'appearance', 'pose', 'environment', 'composition', 'lighting', 'finishing')
+FIELDS = ('subject', 'appearance', 'hair_makeup', 'pose', 'expression',
+          'environment', 'composition', 'lighting', 'finishing')
 MAX_TEXT_LENGTH = 8000
 DEFAULT_LIMIT = 100
 _LOCK = RLock()

@@ -3,8 +3,10 @@ from .history import FIELDS, add_entries
 
 HEADINGS = {
     'subject': 'Subject',
-    'appearance': 'Appearance',
-    'pose': 'Pose & Expression',
+    'appearance': 'Clothing',
+    'hair_makeup': 'Hair & Makeup',
+    'pose': 'Posing',
+    'expression': 'Expression',
     'environment': 'Environment',
     'composition': 'Composition & Camera',
     'lighting': 'Lighting',
@@ -27,7 +29,7 @@ class Krea2PhotoPromptBuilder:
     RETURN_TYPES = ('STRING',)
     RETURN_NAMES = ('prompt',)
     OUTPUT_NODE = False
-    DESCRIPTION = 'Seven-section photographic prompt builder with reusable local JSON history.'
+    DESCRIPTION = 'Nine-section photographic prompt builder with reusable local JSON history.'
 
     @classmethod
     def INPUT_TYPES(cls):
