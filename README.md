@@ -52,7 +52,7 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 ## History UI
 
 - Use the native multiline text fields for direct editing.
-- Click `History: <section> ▾` to open a selectable history dropdown, inspect the full text, apply a value, delete one value, or clear a section's history.
+- Click the `履歴` button to the right of an input field to open a dialog with a selectable history list. Inspect the full text, apply a value, delete one value, or clear that section's history.
 - Click `Save current values to history` to save immediately (even when `auto_save_history` is off).
 - Click `Preview combined prompt` to inspect/copy the generated prompt without running the sampler.
 - Duplicate values are removed, and the most recently saved entry appears first. Histories are independent for all nine categories.
@@ -66,7 +66,7 @@ The history lives at `ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/pro
 
 ## Notes and limitations
 
-- A history menu is an in-node button that opens a dropdown dialog, rather than a separate always-visible combo widget. This avoids disrupting ComfyUI's serialization of built-in input widgets.
+- Each input field has a history button on its right. The dialog shows history as a list, while ComfyUI's built-in widget retains the input value for workflow serialization.
 - Generation-triggered autosave runs only when the builder's Python node executes. Cached/unexecuted runs do not update the history; use the manual save action.
 - The built-in node inputs are `STRING`, not `CONDITIONING`; use a compatible text encoder downstream.
 - The JavaScript UI uses ComfyUI's classic LiteGraph `addWidget` integration. The backend works independently of the extra controls. Frontend behavior may vary in future / Nodes 2.0-only builds; test on the ComfyUI version in use.
@@ -75,6 +75,12 @@ The history lives at `ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/pro
 ## Tests
 
 From the project parent directory: `python -m unittest discover -s comfyui-photo-prompt-builder/tests -v`.
+
+## Preview without ComfyUI
+
+Run `python3 -m http.server 8000` from this repository's root, then open `http://localhost:8000/preview/`. The preview loads the actual frontend JavaScript and mocks the ComfyUI node and history API in the browser. Preview history is stored in browser local storage.
+
+This checks button placement and dialog interactions. It does not verify ComfyUI rendering, workflow serialization, or Python node execution.
 
 ## License
 

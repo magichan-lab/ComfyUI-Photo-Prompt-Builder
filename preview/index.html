@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Prompt Builder UI Preview</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 24px; background: #15171b; color: #f0f0f0; }
+    main { max-width: 520px; margin: auto; }
+    h1 { font-size: 20px; }
+    p { color: #b7bdc8; line-height: 1.5; }
+    #node { padding: 16px; border: 1px solid #555; border-radius: 10px; background: #25272c; }
+    .field { margin-bottom: 14px; }
+    .field > label { display: block; margin-bottom: 5px; font-size: 13px; }
+    .field > .editor { height: 86px; }
+    textarea { width: 100%; height: 100%; padding: 8px; resize: none; background: #17191c; color: #fff; border: 1px solid #666; border-radius: 6px; }
+    .controls { display: flex; gap: 8px; margin-top: 12px; }
+    .controls button { padding: 8px 10px; background: #444b56; color: white; border: 1px solid #666; border-radius: 6px; cursor: pointer; }
+    .error { color: #ffb3b3; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Photo Prompt Builder UI Preview</h1>
+    <p>ComfyUIなしで履歴ボタンとダイアログを確認できます。履歴はこのブラウザーのローカルストレージに保存されます。</p>
+    <div id="node"></div>
+    <p id="status"></p>
+  </main>
+  <script type="module" src="./preview.js"></script>
+</body>
+</html>

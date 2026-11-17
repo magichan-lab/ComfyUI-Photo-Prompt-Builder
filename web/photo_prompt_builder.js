@@ -99,34 +99,53 @@ async function openHistory(node, field, label) {
     const { history } = await request(PATH);
     const list = history[field] || [];
     showModal(`${label} — History (${list.length})`, ({ content, addButton, close }) => {
-      const select = document.createElement('select');
-      Object.assign(select.style, {
-        width: '100%', padding: '10px', background: '#17191c', color: '#fff',
-        border: '1px solid #777', borderRadius: '6px',
+      const listbox = document.createElement('div');
+      listbox.setAttribute('role', 'listbox');
+      listbox.setAttribute('aria-label', `${label} history`);
+      Object.assign(listbox.style, {
+        maxHeight: '260px', overflowY: 'auto', background: '#17191c',
+        border: '1px solid #777', borderRadius: '6px', padding: '4px',
       });
-      for (const [i, value] of list.entries()) {
-        const option = document.createElement('option');
-        option.value = String(i);
-        option.textContent = value.replace(/\s+/g, ' ').slice(0, 150);
-        select.append(option);
-      }
-      if (!list.length) {
-        const option = document.createElement('option');
-        option.textContent = '(No saved history yet)';
-        select.append(option);
-        select.disabled = true;
-      }
-      content.append(select);
+      content.append(listbox);
+      let selected = list.length ? 0 : -1;
+      const rows = [];
       const preview = document.createElement('pre');
       Object.assign(preview.style, {
         whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', maxHeight: '220px', overflow: 'auto',
         padding: '12px', background: '#17191c', borderRadius: '6px',
       });
+      const getSelected = () => list[selected];
+      const choose = (index) => {
+        selected = index;
+        rows.forEach((row, i) => {
+          row.setAttribute('aria-selected', String(i === selected));
+          row.style.background = i === selected ? '#405775' : 'transparent';
+        });
+        preview.textContent = getSelected() ?? '';
+      };
+      for (const [i, value] of list.entries()) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.setAttribute('role', 'option');
+        row.textContent = value.replace(/\s+/g, ' ').slice(0, 150);
+        row.title = value;
+        Object.assign(row.style, {
+          display: 'block', width: '100%', textAlign: 'left', padding: '9px',
+          margin: '0', border: '0', borderRadius: '4px', color: '#fff',
+          cursor: 'pointer', overflowWrap: 'anywhere',
+        });
+        row.addEventListener('click', () => choose(i));
+        listbox.append(row);
+        rows.push(row);
+      }
+      if (!list.length) {
+        const empty = document.createElement('div');
+        empty.textContent = '(No saved history yet)';
+        empty.style.padding = '10px';
+        listbox.append(empty);
+      }
       content.append(preview);
-      const getSelected = () => list[Number(select.value)];
-      const updatePreview = () => { preview.textContent = getSelected() ?? ''; };
-      select.addEventListener('change', updatePreview);
-      updatePreview();
+      choose(selected);
       addButton('Use selected', () => {
         const value = getSelected();
         if (value === undefined) return;
@@ -159,6 +178,34 @@ async function openHistory(node, field, label) {
   } catch (error) { notify(`Cannot load history: ${error.message}`); }
 }
 
+function addHistoryButton(node, field, label) {
+  const target = widget(node, field);
+  const textarea = target?.element ?? target?.inputEl;
+  if (!(textarea instanceof HTMLTextAreaElement)) return;
+
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    display: 'flex', width: '100%', height: '100%', alignItems: 'stretch', gap: '6px',
+    boxSizing: 'border-box', minHeight: '50px',
+  });
+  row.style.setProperty('--comfy-widget-min-height', '80px');
+  Object.assign(textarea.style, {
+    flex: '1 1 auto', width: '0', height: '100%', minWidth: '0', boxSizing: 'border-box',
+  });
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = '履歴';
+  button.title = `${label} の履歴を選択`;
+  button.setAttribute('aria-label', button.title);
+  Object.assign(button.style, {
+    flex: '0 0 48px', alignSelf: 'stretch', border: '1px solid #666',
+    borderRadius: '6px', background: '#444b56', color: '#fff', cursor: 'pointer',
+  });
+  button.addEventListener('click', () => { void openHistory(node, field, label); });
+  row.append(textarea, button);
+  target.element = row;
+}
+
 function preview(node) {
   showModal('Combined Prompt Preview', ({ content, addButton }) => {
     const textarea = document.createElement('textarea');
@@ -185,8 +232,7 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function (...args) {
       const result = oldCreated?.apply(this, args);
       for (const [key, label] of FIELDS) {
-        this.addWidget('button', `History: ${label} ▾`, null,
-          () => { void openHistory(this, key, label); }, { serialize: false });
+        addHistoryButton(this, key, label);
       }
       this.addWidget('button', 'Save current values to history', null, async () => {
         try {
@@ -197,7 +243,7 @@ app.registerExtension({
       }, { serialize: false });
       this.addWidget('button', 'Preview combined prompt', null,
         () => preview(this), { serialize: false });
-      this.setSize([Math.max(this.size[0], 430), Math.max(this.size[1], 920)]);
+      this.setSize([Math.max(this.size[0], 430), Math.max(this.size[1], 760)]);
       return result;
     };
   },
