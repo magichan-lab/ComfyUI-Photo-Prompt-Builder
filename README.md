@@ -53,12 +53,15 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 
 - Use the native multiline text fields for direct editing.
 - Click the `履歴` button to the right of an input field to open a dialog with a selectable history list. Inspect the full text, apply a value, delete one value, or clear that section's history.
-- Click `Save current values to history` to save immediately (even when `auto_save_history` is off).
+- The node's lower controls use two rows: `Select Photo ID` / `Rename` / `Delete`, then Photo ID input / `Save` / `Preview`.
+- Click `Save` to save immediately (even when `auto_save_history` is off).
 - Manual save assigns one Photo ID to all enabled, nonempty fields. Leave the `photo_id` input blank to use the save time in `yymmddHHMMSS` format, or enter up to 24 letters, digits, and `!#$%*+-./:;=?@_~` characters.
 - Choose an ID from the node's `Select Photo ID` dropdown to restore its saved combination. Fields without that ID become blank and disabled. Choosing an ID also fills the `photo_id` input, so saving again updates that ID.
 - A string can have multiple IDs. Saving an existing ID replaces its earlier associations. Disabled strings remain in ordinary history but receive no ID on that save.
 - If an ID is already assigned to different text in the same field, a confirmation dialog lists the affected fields before saving. Cancel leaves the saved combination unchanged. Reusing the same text or adding fields without a conflict needs no confirmation.
-- Click `Preview combined prompt` to inspect/copy the generated prompt without running the sampler.
+- `Rename` changes the selected ID across all fields. The dialog accepts a new ID or can be canceled; blank, invalid, or already used IDs are rejected.
+- `Delete` removes the selected ID from all fields while keeping the history strings and current text fields. The selector returns to its unselected state.
+- Click `Preview` to inspect/copy the generated prompt without running the sampler.
 - Duplicate values are removed, and the most recently saved entry appears first. Histories are independent for all nine categories.
 - Tagged strings survive `history_limit`. Deleting or clearing history removes the affected fields from their Photo IDs.
 - **History is shared by all builder nodes in the same ComfyUI installation.** Current values/toggles are also saved in each ComfyUI workflow.

@@ -14,6 +14,7 @@ const FIELDS = [
   ['finishing', 'Finishing'],
 ];
 const PATH = '/magichanlab_photo_prompt/history';
+const PHOTO_ID_PATH = '/magichanlab_photo_prompt/photo_id';
 const cache = { history: null, photo_ids: {} };
 const nodes = new Set();
 const PHOTO_ID_RE = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
@@ -23,10 +24,16 @@ function syncPhotoIds(photoIds) {
   cache.photo_ids = photoIds;
   const values = [SELECT_ID, ...Object.keys(photoIds).sort().reverse()];
   for (const node of nodes) {
-    const picker = widget(node, 'Select Photo ID');
-    if (!picker) continue;
-    picker.options.values = values;
-    if (!values.includes(picker.value)) picker.value = SELECT_ID;
+    const select = node.photoControls?.select;
+    if (!select) continue;
+    const current = select.value;
+    select.replaceChildren(...values.map((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      return option;
+    }));
+    select.value = values.includes(current) ? current : SELECT_ID;
     node.setDirtyCanvas?.(true, true);
   }
 }
@@ -70,6 +77,7 @@ function setWidget(node, name, value) {
   if (!target) return;
   target.value = value;
   target.callback?.(value);
+  if (name === 'photo_id' && node.photoControls) node.photoControls.input.value = value;
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -94,7 +102,7 @@ function compose(node) {
   return parts.join('\n\n');
 }
 
-function showModal(title, createContent) {
+function showModal(title, createContent, closeText = 'Close') {
   const overlay = document.createElement('div');
   Object.assign(overlay.style, {
     position: 'fixed', inset: '0', background: 'rgba(0,0,0,.68)', zIndex: '99999',
@@ -129,7 +137,7 @@ function showModal(title, createContent) {
     actions.append(btn);
     return btn;
   }
-  addButton('Close', close);
+  addButton(closeText, close);
   overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
   document.body.append(overlay);
   createContent({ content, addButton, close });
@@ -269,6 +277,157 @@ function preview(node) {
   });
 }
 
+function selectedPhotoId(node) {
+  const photoId = node.photoControls?.select.value;
+  return photoId && Object.hasOwn(cache.photo_ids, photoId) ? photoId : null;
+}
+
+async function saveCurrent(node) {
+  try {
+    const limit = Number(widget(node, 'history_limit')?.value ?? 100);
+    const photoId = String(widget(node, 'photo_id')?.value ?? '');
+    if (photoId && !PHOTO_ID_RE.test(photoId)) {
+      throw new Error('Photo ID must be 1–24 characters: A–Z, a–z, 0–9, or !#$%*+-./:;=?@_~');
+    }
+    const payload = {
+      entries: getValues(node), enabled: getEnabled(node), photo_id: photoId, limit,
+    };
+    let result;
+    try {
+      result = await request(PATH, payload);
+    } catch (error) {
+      if (error.status !== 409 || !Array.isArray(error.conflicts)) throw error;
+      const labels = error.conflicts.map((key) => FIELDS.find(([field]) => field === key)?.[1] ?? key);
+      const message = labels.map((label) => `${label}には既に同じPhoto IDが別の文字列に付いています。`).join('\n');
+      if (!window.confirm(`${message}\nPhoto ID「${error.photoId}」の割り当てを上書きしますか？`)) return;
+      result = await request(PATH, { ...payload, photo_id: error.photoId, overwrite: true });
+    }
+    if (node.photoControls) node.photoControls.select.value = result.saved_photo_id;
+    notify(`Saved current values with Photo ID: ${result.saved_photo_id}`);
+  } catch (error) { notify(`Cannot save history: ${error.message}`); }
+}
+
+function openRenamePhotoId(node) {
+  const oldId = selectedPhotoId(node);
+  if (!oldId) return notify('Select a Photo ID to rename.');
+  showModal(`Rename Photo ID: ${oldId}`, ({ content, addButton, close }) => {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 24;
+    input.placeholder = 'New Photo ID';
+    input.setAttribute('aria-label', 'New Photo ID');
+    Object.assign(input.style, {
+      boxSizing: 'border-box', width: '100%', padding: '8px', background: '#17191c',
+      color: '#fff', border: '1px solid #777', borderRadius: '6px',
+    });
+    const errorText = document.createElement('div');
+    Object.assign(errorText.style, { color: '#ffb3b3', marginTop: '8px' });
+    content.append(input, errorText);
+    const submit = async () => {
+      const newId = input.value;
+      if (!PHOTO_ID_RE.test(newId)) {
+        errorText.textContent = 'Photo IDは1～24文字の英数字または !#$%*+-./:;=?@_~ にしてください。';
+        return;
+      }
+      if (Object.hasOwn(cache.photo_ids, newId)) {
+        errorText.textContent = 'このPhoto IDは既に使用されています。';
+        return;
+      }
+      try {
+        const affected = [...nodes].filter((item) => item.photoControls?.select.value === oldId);
+        const inputs = [...nodes].filter((item) => widget(item, 'photo_id')?.value === oldId);
+        await request(`${PHOTO_ID_PATH}/rename`, { old_id: oldId, new_id: newId });
+        for (const item of affected) item.photoControls.select.value = newId;
+        for (const item of inputs) setWidget(item, 'photo_id', newId);
+        close();
+      } catch (error) { errorText.textContent = error.message; }
+    };
+    input.addEventListener('keydown', (event) => { if (event.key === 'Enter') void submit(); });
+    addButton('OK', () => { void submit(); });
+    input.focus();
+  }, 'Cancel');
+}
+
+async function deleteSelectedPhotoId(node) {
+  const photoId = selectedPhotoId(node);
+  if (!photoId) return notify('Select a Photo ID to delete.');
+  if (!window.confirm(`Photo ID「${photoId}」をすべての要素から削除しますか？\n文字列履歴は残ります。`)) return;
+  try {
+    const inputs = [...nodes].filter((item) => widget(item, 'photo_id')?.value === photoId);
+    await request(`${PHOTO_ID_PATH}/delete`, { photo_id: photoId });
+    for (const item of inputs) setWidget(item, 'photo_id', '');
+    // syncPhotoIds resets the selection; section text widgets stay untouched.
+  } catch (error) { notify(`Cannot delete Photo ID: ${error.message}`); }
+}
+
+function makeControlButton(label, title, action) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = label;
+  button.title = title;
+  Object.assign(button.style, {
+    flex: '0 0 75px', minWidth: '0', padding: '4px', cursor: 'pointer',
+    borderRadius: '6px', background: '#444b56', color: '#fff', border: '1px solid #666',
+  });
+  button.addEventListener('click', action);
+  return button;
+}
+
+function addPhotoControls(node) {
+  const photoWidget = widget(node, 'photo_id');
+  if (!photoWidget) return;
+  const makeRow = () => {
+    const row = document.createElement('div');
+    Object.assign(row.style, {
+      display: 'flex', boxSizing: 'border-box', width: '100%', height: '100%',
+      minHeight: '36px', alignItems: 'stretch', gap: '5px',
+    });
+    return row;
+  };
+  const select = document.createElement('select');
+  select.setAttribute('aria-label', 'Select Photo ID');
+  select.title = 'Select Photo ID';
+  Object.assign(select.style, {
+    flex: '1 1 auto', width: '0', minWidth: '0', padding: '4px',
+    background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
+  });
+  select.addEventListener('change', () => applyPhotoId(node, select.value));
+  const first = makeRow();
+  first.append(select,
+    makeControlButton('Rename', 'Rename selected Photo ID', () => openRenamePhotoId(node)),
+    makeControlButton('Delete', 'Delete selected Photo ID', () => { void deleteSelectedPhotoId(node); }));
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 24;
+  input.value = String(photoWidget.value ?? '');
+  input.placeholder = 'Photo ID (blank = time)';
+  input.setAttribute('aria-label', 'Photo ID for save');
+  Object.assign(input.style, {
+    flex: '1 1 auto', width: '0', minWidth: '0', padding: '4px',
+    background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
+  });
+  input.addEventListener('input', () => setWidget(node, 'photo_id', input.value));
+  const second = makeRow();
+  second.append(input,
+    makeControlButton('Save', 'Save current values', () => { void saveCurrent(node); }),
+    makeControlButton('Preview', 'Preview combined prompt', () => preview(node)));
+
+  photoWidget.type = 'hidden';
+  photoWidget.options ??= {};
+  photoWidget.options.hidden = true;
+  photoWidget.computeSize = () => [0, -4];
+  photoWidget.draw = () => {};
+  node.photoControls = { select, input };
+  const options = { serialize: false, hideOnZoom: false,
+    getMinHeight: () => 36, getHeight: () => 36 };
+  const firstWidget = node.addDOMWidget('Photo ID selection', 'photo_id_controls', first, options);
+  const secondWidget = node.addDOMWidget('Photo ID actions', 'photo_id_controls', second, options);
+  firstWidget.serialize = false;
+  secondWidget.serialize = false;
+  syncPhotoIds(cache.photo_ids);
+}
+
 app.registerExtension({
   name: 'MagichanLab_photo_prompt_builder',
   async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -285,36 +444,16 @@ app.registerExtension({
       for (const [key, label] of FIELDS) {
         addHistoryButton(this, key, label);
       }
-      this.addWidget('combo', 'Select Photo ID', SELECT_ID,
-        (photoId) => applyPhotoId(this, photoId), { values: [SELECT_ID], serialize: false });
+      addPhotoControls(this);
+      const oldConfigure = this.onConfigure;
+      this.onConfigure = function (...configureArgs) {
+        const configured = oldConfigure?.apply(this, configureArgs);
+        if (this.photoControls) {
+          this.photoControls.input.value = String(widget(this, 'photo_id')?.value ?? '');
+        }
+        return configured;
+      };
       void request(PATH).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
-      this.addWidget('button', 'Save current values to history', null, async () => {
-        try {
-          const limit = Number(widget(this, 'history_limit')?.value ?? 100);
-          const photoId = String(widget(this, 'photo_id')?.value ?? '');
-          if (photoId && !PHOTO_ID_RE.test(photoId)) {
-            throw new Error('Photo ID must be 1–24 characters: A–Z, a–z, 0–9, or !#$%*+-./:;=?@_~');
-          }
-          const payload = {
-            entries: getValues(this), enabled: getEnabled(this), photo_id: photoId, limit,
-          };
-          let result;
-          try {
-            result = await request(PATH, payload);
-          } catch (error) {
-            if (error.status !== 409 || !Array.isArray(error.conflicts)) throw error;
-            const labels = error.conflicts.map((key) => FIELDS.find(([field]) => field === key)?.[1] ?? key);
-            const message = labels.map((label) => `${label}には既に同じPhoto IDが別の文字列に付いています。`).join('\n');
-            if (!window.confirm(`${message}\nPhoto ID「${error.photoId}」の割り当てを上書きしますか？`)) return;
-            result = await request(PATH, { ...payload, photo_id: error.photoId, overwrite: true });
-          }
-          const picker = widget(this, 'Select Photo ID');
-          if (picker) picker.value = result.saved_photo_id;
-          notify(`Saved current values with Photo ID: ${result.saved_photo_id}`);
-        } catch (error) { notify(`Cannot save history: ${error.message}`); }
-      }, { serialize: false });
-      this.addWidget('button', 'Preview combined prompt', null,
-        () => preview(this), { serialize: false });
       this.setSize([Math.max(this.size[0], 430), Math.max(this.size[1], 760)]);
       return result;
     };

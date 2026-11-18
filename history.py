@@ -105,6 +105,43 @@ def read_photo_ids():
     return read_state()['photo_ids']
 
 
+def _validate_photo_id(photo_id):
+    if not isinstance(photo_id, str) or not PHOTO_ID_PATTERN.fullmatch(photo_id):
+        raise ValueError('Photo ID must be 1–24 characters: A–Z, a–z, 0–9, or !#$%*+-./:;=?@_~')
+
+
+def rename_photo_id(old_id, new_id):
+    _validate_photo_id(old_id)
+    _validate_photo_id(new_id)
+    with _LOCK:
+        data = _read_unlocked()
+        ids = _photo_ids(data)
+        if old_id not in ids:
+            raise ValueError('Photo ID does not exist')
+        if new_id in ids:
+            raise ValueError('New Photo ID is already in use')
+        for items in data['history'].values():
+            for item in items:
+                item['photo_ids'] = [new_id if value == old_id else value
+                                     for value in item['photo_ids']]
+        _write_unlocked(data)
+        return {'history': _public(data), 'photo_ids': _photo_ids(data)}
+
+
+def delete_photo_id(photo_id):
+    _validate_photo_id(photo_id)
+    with _LOCK:
+        data = _read_unlocked()
+        if photo_id not in _photo_ids(data):
+            raise ValueError('Photo ID does not exist')
+        for items in data['history'].values():
+            for item in items:
+                if photo_id in item['photo_ids']:
+                    item['photo_ids'].remove(photo_id)
+        _write_unlocked(data)
+        return {'history': _public(data), 'photo_ids': _photo_ids(data)}
+
+
 def add_entries(entries, limit=DEFAULT_LIMIT, photo_id=None, enabled=None, overwrite=False):
     """Save strings; require confirmation before moving an ID to different text."""
     if not isinstance(entries, dict):
@@ -123,8 +160,7 @@ def add_entries(entries, limit=DEFAULT_LIMIT, photo_id=None, enabled=None, overw
     if photo_id is not None:
         if photo_id == '':
             photo_id = datetime.now().strftime('%y%m%d%H%M%S')
-        if not isinstance(photo_id, str) or not PHOTO_ID_PATTERN.fullmatch(photo_id):
-            raise ValueError('Photo ID must be 1–24 characters: A–Z, a–z, 0–9, or !#$%*+-./:;=?@_~')
+        _validate_photo_id(photo_id)
         if not any(raw.strip() and (enabled is None or enabled.get(field, True))
                    for field, raw in entries.items()):
             raise ValueError('At least one enabled, nonempty field is required for a Photo ID')

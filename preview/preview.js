@@ -7,6 +7,7 @@ const fields = [
 ];
 const storageKey = 'photo-prompt-builder-preview-history';
 const idsKey = 'photo-prompt-builder-preview-photo-ids';
+const photoIdPattern = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
 const nodeElement = document.querySelector('#node');
 const status = document.querySelector('#status');
 let extension;
@@ -31,6 +32,22 @@ const api = {
     const photoIds = readIds();
     if (!options) return reply(history, photoIds);
     const body = JSON.parse(options.body);
+    if (path.endsWith('/photo_id/rename')) {
+      if (!photoIdPattern.test(body.new_id) || !Object.hasOwn(photoIds, body.old_id) ||
+          Object.hasOwn(photoIds, body.new_id)) {
+        return { ok: false, status: 400, json: async () => ({ error: 'Invalid or already used Photo ID' }) };
+      }
+      photoIds[body.new_id] = photoIds[body.old_id];
+      delete photoIds[body.old_id];
+      return reply(history, photoIds);
+    }
+    if (path.endsWith('/photo_id/delete')) {
+      if (!Object.hasOwn(photoIds, body.photo_id)) {
+        return { ok: false, status: 400, json: async () => ({ error: 'Photo ID does not exist' }) };
+      }
+      delete photoIds[body.photo_id];
+      return reply(history, photoIds);
+    }
     if (path.endsWith('/delete')) {
       history[body.field] = history[body.field].filter(value => value !== body.value);
       for (const values of Object.values(photoIds)) {
@@ -96,6 +113,11 @@ class PreviewNode {
     this.widgets.push(widget);
     return widget;
   }
+  addDOMWidget(name, type, element, options = {}) {
+    const widget = { name, type, element, options };
+    this.widgets.push(widget);
+    return widget;
+  }
   setSize(size) { this.size = size; }
   setDirtyCanvas() {}
 }
@@ -126,40 +148,10 @@ async function main() {
     field.append(title, editor);
     nodeElement.append(field);
   }
-  const controls = document.createElement('div');
-  controls.className = 'controls';
-  const idInput = document.createElement('input');
-  idInput.placeholder = 'Photo ID (空欄なら日時)';
-  idInput.maxLength = 24;
-  idInput.addEventListener('input', () => { node.widgets.find(widget => widget.name === 'photo_id').value = idInput.value; });
-  nodeElement.append(idInput);
-  const picker = node.widgets.find(widget => widget.name === 'Select Photo ID');
-  const select = document.createElement('select');
-  const refreshSelect = () => {
-    select.replaceChildren(...picker.options.values.map(value => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = value;
-      return option;
-    }));
-    select.value = picker.value;
-  };
-  select.addEventListener('change', () => {
-    picker.value = select.value;
-    picker.callback(select.value);
-    idInput.value = node.widgets.find(widget => widget.name === 'photo_id').value;
-  });
-  nodeElement.append(select);
-  const originalDirty = node.setDirtyCanvas.bind(node);
-  node.setDirtyCanvas = (...args) => { originalDirty(...args); refreshSelect(); };
-  refreshSelect();
-  for (const widget of node.widgets.filter(widget => widget.type === 'button')) {
-    const button = document.createElement('button');
-    button.textContent = widget.name;
-    button.addEventListener('click', async () => { await widget.callback(); refreshSelect(); });
-    controls.append(button);
+  for (const control of node.widgets.filter(item => item.name.startsWith('Photo ID '))) {
+    control.element.classList.add('photo-controls');
+    nodeElement.append(control.element);
   }
-  nodeElement.append(controls);
   status.textContent = '入力後に保存するとPhoto IDが発行され、ドロップダウンから再現できます。';
 }
 

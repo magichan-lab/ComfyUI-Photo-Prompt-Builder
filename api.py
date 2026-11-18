@@ -1,7 +1,8 @@
 """Same-origin local ComfyUI server endpoints for the frontend extension."""
 from aiohttp import web
 from server import PromptServer
-from .history import PhotoIdConflict, add_entries, clear_field, delete_entry, read_state
+from .history import (PhotoIdConflict, add_entries, clear_field, delete_entry,
+                      delete_photo_id, read_state, rename_photo_id)
 
 routes = PromptServer.instance.routes
 
@@ -54,5 +55,27 @@ async def post_clear(request):
         if not isinstance(body, dict):
             raise ValueError('Request must be an object')
         return web.json_response(clear_field(body.get('field')))
+    except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
+        return _error(exc)
+
+
+@routes.post('/magichanlab_photo_prompt/photo_id/rename')
+async def post_rename_photo_id(request):
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise ValueError('Request must be an object')
+        return web.json_response(rename_photo_id(body.get('old_id'), body.get('new_id')))
+    except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
+        return _error(exc)
+
+
+@routes.post('/magichanlab_photo_prompt/photo_id/delete')
+async def post_delete_photo_id(request):
+    try:
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise ValueError('Request must be an object')
+        return web.json_response(delete_photo_id(body.get('photo_id')))
     except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)

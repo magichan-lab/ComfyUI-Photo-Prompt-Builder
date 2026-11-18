@@ -108,6 +108,39 @@ class TestHistory(unittest.TestCase):
         self.assertEqual(raised.exception.fields, ['subject', 'pose'])
         self.assertEqual(self.h.read_photo_ids()['shared']['lighting'], 'Soft')
 
+    def test_rename_photo_id_updates_all_fields_without_changing_text(self):
+        self.h.add_entries({'subject': 'Same', 'pose': 'Standing'}, photo_id='old')
+        self.h.add_entries({'subject': 'Same'}, photo_id='other')
+        original_history = self.h.read_history()
+        result = self.h.rename_photo_id('old', 'new-1')
+        self.assertEqual(result['history'], original_history)
+        self.assertNotIn('old', result['photo_ids'])
+        self.assertEqual(result['photo_ids']['new-1'],
+                         {'subject': 'Same', 'pose': 'Standing'})
+        self.assertEqual(result['photo_ids']['other'], {'subject': 'Same'})
+        self.assertEqual(self.h.read_photo_ids(), result['photo_ids'])
+
+    def test_rename_rejects_empty_duplicate_and_invalid_ids(self):
+        self.h.add_entries({'subject': 'A'}, photo_id='old')
+        self.h.add_entries({'pose': 'B'}, photo_id='taken')
+        for new_id in ('', 'taken', 'bad id', 'old', 'a' * 25):
+            with self.subTest(new_id=new_id), self.assertRaises(ValueError):
+                self.h.rename_photo_id('old', new_id)
+        with self.assertRaises(ValueError):
+            self.h.rename_photo_id('missing', 'new')
+        self.assertEqual(set(self.h.read_photo_ids()), {'old', 'taken'})
+
+    def test_delete_photo_id_preserves_history_and_other_ids(self):
+        self.h.add_entries({'subject': 'A', 'pose': 'Standing'}, photo_id='delete-me')
+        self.h.add_entries({'subject': 'A'}, photo_id='keep-me')
+        original_history = self.h.read_history()
+        result = self.h.delete_photo_id('delete-me')
+        self.assertEqual(result['history'], original_history)
+        self.assertEqual(result['photo_ids'], {'keep-me': {'subject': 'A'}})
+        self.assertNotIn('delete-me', self.h.FILE.read_text(encoding='utf-8'))
+        with self.assertRaises(ValueError):
+            self.h.delete_photo_id('delete-me')
+
     def test_tagged_entries_survive_history_limit(self):
         self.h.add_entries({'subject': 'Pinned'}, photo_id='pin')
         self.h.add_entries({'subject': 'One'}, limit=1)
