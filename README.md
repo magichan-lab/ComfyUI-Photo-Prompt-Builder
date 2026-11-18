@@ -53,9 +53,10 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 
 - Use the native multiline text fields for direct editing.
 - Click the `履歴` button to the right of an input field to open a dialog with a selectable history list. Inspect the full text, apply a value, delete one value, or clear that section's history.
-- The node's lower controls use two rows: `Select Photo ID` / `Rename` / `Delete`, then Photo ID input / `Save` / `Preview`.
+- The node's lower controls use two rows: Photo ID search / `Select Photo ID` / `Rename` / `Delete`, then the Photo ID input for saving / `Save` / `Preview`.
 - Click `Save` to save immediately (even when `auto_save_history` is off).
 - Manual save assigns one Photo ID to all enabled, nonempty fields. Leave the `photo_id` input blank to use the save time in `yymmddHHMMSS` format, or enter up to 24 letters, digits, and `!#$%*+-./:;=?@_~` characters.
+- Photo IDs appear in natural ascending order. Type in the search box to immediately filter IDs by a case-insensitive substring; clear it to show all IDs. The search box only filters the dropdown and does not change the Photo ID used for saving.
 - Choose an ID from the node's `Select Photo ID` dropdown to restore its saved combination. Fields without that ID become blank and disabled. Choosing an ID also fills the `photo_id` input, so saving again updates that ID.
 - A string can have multiple IDs. Saving an existing ID replaces its earlier associations. Disabled strings remain in ordinary history but receive no ID on that save.
 - If an ID is already assigned to different text in the same field, a confirmation dialog lists the affected fields before saving. Cancel leaves the saved combination unchanged. Reusing the same text or adding fields without a conflict needs no confirmation.

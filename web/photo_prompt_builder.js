@@ -19,22 +19,28 @@ const cache = { history: null, photo_ids: {} };
 const nodes = new Set();
 const PHOTO_ID_RE = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
 const SELECT_ID = '(Select Photo ID)';
+const photoIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+function renderPhotoIds(node, selectedId = node.photoControls.select.value) {
+  const { search, select } = node.photoControls;
+  const query = search.value.trim().toLocaleLowerCase();
+  const values = Object.keys(cache.photo_ids)
+    .filter((id) => id.toLocaleLowerCase().includes(query))
+    .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
+  select.replaceChildren(...[SELECT_ID, ...values].map((value) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    return option;
+  }));
+  select.value = values.includes(selectedId) ? selectedId : SELECT_ID;
+  node.setDirtyCanvas?.(true, true);
+}
 
 function syncPhotoIds(photoIds) {
   cache.photo_ids = photoIds;
-  const values = [SELECT_ID, ...Object.keys(photoIds).sort().reverse()];
   for (const node of nodes) {
-    const select = node.photoControls?.select;
-    if (!select) continue;
-    const current = select.value;
-    select.replaceChildren(...values.map((value) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = value;
-      return option;
-    }));
-    select.value = values.includes(current) ? current : SELECT_ID;
-    node.setDirtyCanvas?.(true, true);
+    if (node.photoControls) renderPhotoIds(node);
   }
 }
 
@@ -302,7 +308,10 @@ async function saveCurrent(node) {
       if (!window.confirm(`${message}\nOverwrite the assignments for Photo ID "${error.photoId}"?`)) return;
       result = await request(PATH, { ...payload, photo_id: error.photoId, overwrite: true });
     }
-    if (node.photoControls) node.photoControls.select.value = result.saved_photo_id;
+    if (node.photoControls) {
+      node.photoControls.search.value = '';
+      renderPhotoIds(node, result.saved_photo_id);
+    }
     notify(`Saved current values with Photo ID: ${result.saved_photo_id}`);
   } catch (error) { notify(`Cannot save history: ${error.message}`); }
 }
@@ -337,7 +346,10 @@ function openRenamePhotoId(node) {
         const affected = [...nodes].filter((item) => item.photoControls?.select.value === oldId);
         const inputs = [...nodes].filter((item) => widget(item, 'photo_id')?.value === oldId);
         await request(`${PHOTO_ID_PATH}/rename`, { old_id: oldId, new_id: newId });
-        for (const item of affected) item.photoControls.select.value = newId;
+        for (const item of affected) {
+          item.photoControls.search.value = '';
+          renderPhotoIds(item, newId);
+        }
         for (const item of inputs) setWidget(item, 'photo_id', newId);
         close();
       } catch (error) { errorText.textContent = error.message; }
@@ -392,8 +404,17 @@ function addPhotoControls(node) {
     background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
   });
   select.addEventListener('change', () => applyPhotoId(node, select.value));
+  const search = document.createElement('input');
+  search.type = 'search';
+  search.placeholder = 'Search ID';
+  search.setAttribute('aria-label', 'Search Photo ID');
+  Object.assign(search.style, {
+    flex: '1 1 auto', width: '0', minWidth: '0', padding: '4px',
+    background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
+  });
+  search.addEventListener('input', () => renderPhotoIds(node));
   const first = makeRow();
-  first.append(select,
+  first.append(search, select,
     makeControlButton('Rename', 'Rename selected Photo ID', () => openRenamePhotoId(node)),
     makeControlButton('Delete', 'Delete selected Photo ID', () => { void deleteSelectedPhotoId(node); }));
 
@@ -418,7 +439,7 @@ function addPhotoControls(node) {
   photoWidget.options.hidden = true;
   photoWidget.computeSize = () => [0, -4];
   photoWidget.draw = () => {};
-  node.photoControls = { select, input };
+  node.photoControls = { search, select, input };
   const options = { serialize: false, hideOnZoom: false,
     getMinHeight: () => 36, getHeight: () => 36 };
   const firstWidget = node.addDOMWidget('Photo ID selection', 'photo_id_controls', first, options);
