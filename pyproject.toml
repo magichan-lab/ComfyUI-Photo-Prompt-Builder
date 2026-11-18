@@ -1,0 +1,20 @@
+[project]
+name = "photo-prompt-builder"
+version = "0.1.0"
+description = "Build nine-section photography prompts with reusable local history and Photo IDs in ComfyUI."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+dependencies = []
+classifiers = [
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Repository = "https://github.com/magichan-lab/ComfyUI-Photo-Prompt-Builder"
+Documentation = "https://github.com/magichan-lab/ComfyUI-Photo-Prompt-Builder#readme"
+"Bug Tracker" = "https://github.com/magichan-lab/ComfyUI-Photo-Prompt-Builder/issues"
+
+[tool.comfy]
+PublisherId = "magichan"
+DisplayName = "Krea2 Photo Prompt Builder"

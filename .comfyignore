@@ -1,0 +1,9 @@
+# The history file may contain private prompts and must never enter a release archive.
+data/prompt_history.json
+
+# Development-only files tracked in Git.
+tests/
+preview/
+__pycache__/
+**/__pycache__/
+*.pyc

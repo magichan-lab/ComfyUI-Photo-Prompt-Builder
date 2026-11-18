@@ -6,12 +6,26 @@ A single ComfyUI node that builds a labeled, nine-section photography prompt and
 
 ## Installation
 
+After the first Comfy Registry release, install **Krea2 Photo Prompt Builder** through ComfyUI Manager by searching for `photo-prompt-builder`.
+
+For manual installation:
+
 1. Extract the ZIP into `ComfyUI/custom_nodes/` so the folder is `ComfyUI/custom_nodes/comfyui-photo-prompt-builder/`.
 2. Restart the ComfyUI Python server, and refresh the browser (Ctrl+Shift+R if needed).
 3. Search for **Krea2 Photo Prompt Builder** under `prompt/photo`.
 4. Right-click the `text` widget of your `CLIPTextEncode` node and convert it to an input, if the text input port is not already available. Connect the builder's `prompt` output (STRING) to that input.
 
 No pip dependencies beyond ComfyUI's own `aiohttp` are required.
+
+## Comfy Registry publishing
+
+The repository includes `pyproject.toml` metadata and a `.comfyignore` release filter. The Registry package name is `photo-prompt-builder` (distinct from the internal node ID). The proposed first Registry version is `0.1.0`.
+
+1. Use the `magichan` publisher at [Comfy Registry](https://registry.comfy.org/). The same ID is set in `[tool.comfy].PublisherId` in `pyproject.toml`.
+2. Review the version and metadata in `pyproject.toml`. Increment `version` for each later release; a published version cannot be changed.
+3. Install [Comfy CLI](https://docs.comfy.org/comfy-cli/getting-started), then run `comfy node publish` from the repository root. The CLI asks for a Registry publishing API key. Do not commit the key.
+
+The `.comfyignore` file excludes the local prompt history, test files, preview, and Python bytecode from the Registry archive. Keep `data/prompt_history_template.json` in the package because the node reads it before the first save. See the [official publishing guide](https://docs.comfy.org/registry/publishing) for account and key setup.
 
 The internal ComfyUI node ID is `MagichanLab_Krea2PhotoPromptBuilder`. Workflows saved with the earlier ID `Krea2PhotoPromptBuilder` need their node type changed to the new ID before loading this version. The displayed node name remains **Krea2 Photo Prompt Builder**.
 

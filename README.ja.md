@@ -4,12 +4,26 @@
 
 ## インストール
 
+Comfy Registryで初回公開した後は、ComfyUI Managerで`photo-prompt-builder`を検索し、**Krea2 Photo Prompt Builder**をインストールできます。
+
+手動でインストールする場合：
+
 1. ZIPを`ComfyUI/custom_nodes/`に展開し、フォルダーが`ComfyUI/custom_nodes/comfyui-photo-prompt-builder/`になるようにします。
 2. ComfyUIのPythonサーバーを再起動し、ブラウザーを更新します（必要に応じてCtrl+Shift+R）。
 3. `prompt/photo`カテゴリで**Krea2 Photo Prompt Builder**を検索します。
 4. `CLIPTextEncode`ノードにテキスト入力ポートがまだない場合は、`text`ウィジェットを右クリックして入力に変換します。このノードの`prompt`出力（STRING）をその入力につなぎます。
 
 ComfyUIに含まれる`aiohttp`以外に、pipでインストールする依存パッケージはありません。
+
+## Comfy Registryへの公開準備
+
+`pyproject.toml`に公開用のメタデータを、`.comfyignore`に公開アーカイブから除外するファイルを指定しています。Registry上のパッケージ名は`photo-prompt-builder`で、ComfyUI内部のノードIDとは別です。初回公開用のバージョン案は`0.1.0`です。
+
+1. [Comfy Registry](https://registry.comfy.org/)のPublisher ID `magichan`を使用します。`pyproject.toml`の`[tool.comfy].PublisherId`にも同じIDを設定しています。
+2. `pyproject.toml`のバージョンとメタデータを確認してください。公開済みのバージョンは変更できないため、次回以降の公開では`version`を更新します。
+3. [Comfy CLI](https://docs.comfy.org/comfy-cli/getting-started)をインストールし、リポジトリのルートで`comfy node publish`を実行してください。Registry公開用APIキーの入力を求められます。キーをリポジトリに保存しないでください。
+
+`.comfyignore`はローカルのプロンプト履歴、テスト、プレビュー、Pythonバイトコードを公開アーカイブから除外します。初回保存前に読み込む`data/prompt_history_template.json`は公開アーカイブに含めます。アカウントとキーの作成方法は[公式の公開手順](https://docs.comfy.org/registry/publishing)を参照してください。
 
 ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`です。旧IDの`Krea2PhotoPromptBuilder`で保存したワークフローをこのバージョンで読み込むには、ワークフロー内のノードタイプを新しいIDに変更する必要があります。画面上のノード名は引き続き**Krea2 Photo Prompt Builder**です。
 
