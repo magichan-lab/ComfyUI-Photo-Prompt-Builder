@@ -83,6 +83,17 @@ Medium shot, eye-level, 50mm lens
 
 履歴は`ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.json`に保存されます。人が読めるUTF-8形式で、ファイルの置き換えはアトミックに行われ、Git管理から除外されます。ファイルがない場合は、履歴を保存するまでGit管理下の`data/prompt_history_template.json`を参照します。カスタムノードを再インストールする前には履歴をバックアップしてください。
 
+### JSON の Export / Import（GUI不要）
+
+ComfyUIを起動した状態で、以下をターミナルから実行できます。Exportファイルには9項目の履歴とPhoto IDの関連付けがすべて含まれます。
+
+```sh
+curl -fS http://127.0.0.1:8188/magichanlab_photo_prompt/history/export -o photo-prompt-history.json
+curl -fS -X POST -H 'Content-Type: application/json' --data-binary @photo-prompt-history.json http://127.0.0.1:8188/magichanlab_photo_prompt/history/import
+```
+
+**Importは現在の共有履歴を丸ごと置き換えます。** 実行前にExportでバックアップしてください。Importが受け付けるのは、このノードのバージョン2の履歴JSON形式です。不正な形式はエラーになり、既存の履歴は変更されません。Import後はComfyUIのブラウザー画面を更新し、Photo IDの一覧を読み直してください。別のポートでComfyUIを起動している場合はURLの`8188`を変更してください。
+
 旧バージョンからの初回更新では、これまでGit管理されていた`prompt_history.json`をリポジトリ外にコピーしてから、`git restore data/prompt_history.json`、`git pull`の順に実行し、バックアップを`data/prompt_history.json`へ戻してください。以後の更新は通常どおり`git pull`できます。
 
 **Google Colab**：Colabの一時的な実行環境では、ランタイムをリセットするとローカルの履歴が削除されます。履歴を残すには、`data`ディレクトリをGoogle Drive上の永続ストレージにバックアップするか、シンボリックリンクを作成してください。このプロジェクトはDriveを自動でマウントしません。

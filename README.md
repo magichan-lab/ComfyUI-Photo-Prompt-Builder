@@ -85,6 +85,17 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 
 The history lives at `ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.json`. It is human-readable UTF-8, written using atomic replacement, and excluded from Git. If the file is missing, the node reads the tracked `data/prompt_history_template.json` until history is saved. Back up `prompt_history.json` before reinstalling the custom node.
 
+### JSON export and import without the GUI
+
+With ComfyUI running, use these commands in a terminal. The export includes all nine history sections and their Photo ID associations.
+
+```sh
+curl -fS http://127.0.0.1:8188/magichanlab_photo_prompt/history/export -o photo-prompt-history.json
+curl -fS -X POST -H 'Content-Type: application/json' --data-binary @photo-prompt-history.json http://127.0.0.1:8188/magichanlab_photo_prompt/history/import
+```
+
+**Import replaces the entire shared history.** Export a backup before importing. The endpoint accepts this node's version 2 history JSON format. Invalid data is rejected without changing the existing history. Refresh the ComfyUI browser page after import to reload the Photo ID list. Replace port `8188` if your ComfyUI server uses another port.
+
 For the first update from an older checkout that still tracks `prompt_history.json`, copy it outside the repository, run `git restore data/prompt_history.json` and `git pull`, then copy the backup back to `data/prompt_history.json`. Later updates can use `git pull` directly.
 
 **Google Colab**: Colab's ephemeral runtime deletes the local history when the runtime is reset. To retain it, back up or symlink the `data` directory to persistent Google Drive storage. This project does not automatically mount Drive.

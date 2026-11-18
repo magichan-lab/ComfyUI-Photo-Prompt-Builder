@@ -97,6 +97,46 @@ def read_state():
         return {'history': _public(data), 'photo_ids': _photo_ids(data)}
 
 
+def export_data():
+    """Return the complete on-disk schema, including Photo ID associations."""
+    with _LOCK:
+        return _read_unlocked()
+
+
+def import_data(data):
+    """Validate a version 2 backup and atomically replace the current history."""
+    if (not isinstance(data, dict) or set(data) != {'version', 'history'}
+            or type(data['version']) is not int or data['version'] != 2):
+        raise ValueError('Expected a version 2 prompt history JSON object')
+    history = data['history']
+    if not isinstance(history, dict) or set(history) != set(FIELDS):
+        raise ValueError('History must contain exactly the nine prompt fields')
+    validated = _empty()
+    for field in FIELDS:
+        items = history[field]
+        if not isinstance(items, list):
+            raise ValueError(f'{field} history must be a list')
+        seen_text = set()
+        seen_ids = set()
+        for item in items:
+            if not isinstance(item, dict) or set(item) != {'text', 'photo_ids'}:
+                raise ValueError(f'{field} entries must contain text and photo_ids')
+            value, photo_ids = item['text'], item['photo_ids']
+            if not isinstance(value, str) or not value or len(value) > MAX_TEXT_LENGTH or value in seen_text:
+                raise ValueError(f'{field} contains invalid or duplicate text')
+            if not isinstance(photo_ids, list) or any(
+                not isinstance(photo_id, str) or not PHOTO_ID_PATTERN.fullmatch(photo_id)
+                or photo_id in seen_ids for photo_id in photo_ids
+            ) or len(photo_ids) != len(set(photo_ids)):
+                raise ValueError(f'{field} contains invalid or duplicate Photo IDs')
+            seen_text.add(value)
+            seen_ids.update(photo_ids)
+            validated['history'][field].append({'text': value, 'photo_ids': list(photo_ids)})
+    with _LOCK:
+        _write_unlocked(validated)
+        return {'history': _public(validated), 'photo_ids': _photo_ids(validated)}
+
+
 def read_history():
     return read_state()['history']
 

@@ -1,4 +1,6 @@
+import copy
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -175,6 +177,45 @@ class TestHistory(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.h.add_entries({'subject': 'C'}, photo_id='unused', enabled={'subject': False})
         self.assertNotIn('C', self.h.read_history()['subject'])
+
+    def test_export_import_round_trip_preserves_history_and_photo_ids(self):
+        self.h.add_entries({'subject': '東京', 'lighting': 'Soft'}, photo_id='photo-1')
+        self.h.add_entries({'subject': 'Another'}, photo_id='photo-2')
+        backup = json.loads(json.dumps(self.h.export_data(), ensure_ascii=False))
+        self.assertEqual(backup['version'], 2)
+        self.assertEqual(backup['history']['subject'][1]['photo_ids'], ['photo-1'])
+        self.h.clear_field('subject')
+        self.h.clear_field('lighting')
+        self.assertNotIn('photo-1', self.h.read_photo_ids())
+        restored = self.h.import_data(backup)
+        self.assertEqual(restored['photo_ids']['photo-1'],
+                         {'subject': '東京', 'lighting': 'Soft'})
+        self.assertEqual(self.h.export_data(), backup)
+
+    def test_invalid_import_does_not_replace_existing_history(self):
+        self.h.add_entries({'subject': 'Keep'}, photo_id='keep')
+        before = self.h.FILE.read_bytes()
+        good = self.h.export_data()
+        bad_cases = [
+            None,
+            {'version': 1, 'history': good['history']},
+            {'version': 2, 'history': {}},
+        ]
+        duplicate_text = copy.deepcopy(good)
+        duplicate_text['history']['subject'].append(copy.deepcopy(
+            duplicate_text['history']['subject'][0]))
+        bad_cases.append(duplicate_text)
+        duplicate_id = copy.deepcopy(good)
+        duplicate_id['history']['subject'].append(
+            {'text': 'Other', 'photo_ids': ['keep']})
+        bad_cases.append(duplicate_id)
+        bad_id = copy.deepcopy(good)
+        bad_id['history']['subject'][0]['photo_ids'] = ['bad id']
+        bad_cases.append(bad_id)
+        for bad in bad_cases:
+            with self.subTest(data=bad), self.assertRaises(ValueError):
+                self.h.import_data(bad)
+            self.assertEqual(self.h.FILE.read_bytes(), before)
 
 
 class TestCompose(unittest.TestCase):

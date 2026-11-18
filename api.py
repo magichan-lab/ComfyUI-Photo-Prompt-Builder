@@ -1,8 +1,9 @@
-"""Same-origin local ComfyUI server endpoints for the frontend extension."""
+"""ComfyUI endpoints for the frontend and JSON backup commands."""
 from aiohttp import web
 from server import PromptServer
 from .history import (PhotoIdConflict, add_entries, clear_field, delete_entry,
-                      delete_photo_id, read_state, rename_photo_id)
+                      delete_photo_id, export_data, import_data, read_state,
+                      rename_photo_id)
 
 routes = PromptServer.instance.routes
 
@@ -18,6 +19,24 @@ async def get_history(request):
     try:
         return web.json_response(read_state())
     except (OSError, ValueError, RuntimeError) as exc:
+        return _error(exc)
+
+
+@routes.get('/magichanlab_photo_prompt/history/export')
+async def get_history_export(request):
+    try:
+        return web.json_response(export_data(), headers={
+            'Content-Disposition': 'attachment; filename="photo-prompt-history.json"',
+        })
+    except (OSError, ValueError, RuntimeError) as exc:
+        return _error(exc)
+
+
+@routes.post('/magichanlab_photo_prompt/history/import')
+async def post_history_import(request):
+    try:
+        return web.json_response(import_data(await request.json()))
+    except (OSError, ValueError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)
 
 
