@@ -152,7 +152,7 @@ async function main() {
     control.element.classList.add('photo-controls');
     nodeElement.append(control.element);
   }
-  status.textContent = '入力後に保存するとPhoto IDが発行され、ドロップダウンから再現できます。';
+  status.textContent = 'Enter values and save to create a Photo ID. Select it from the dropdown to restore them.';
 }
 
 main().catch(error => {

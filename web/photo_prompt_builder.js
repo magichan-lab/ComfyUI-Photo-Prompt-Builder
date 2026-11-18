@@ -247,11 +247,11 @@ function addHistoryButton(node, field, label) {
   });
   const button = document.createElement('button');
   button.type = 'button';
-  button.textContent = '履歴';
-  button.title = `${label} の履歴を選択`;
+  button.textContent = 'History';
+  button.title = `Select ${label} history`;
   button.setAttribute('aria-label', button.title);
   Object.assign(button.style, {
-    flex: '0 0 48px', alignSelf: 'stretch', border: '1px solid #666',
+    flex: '0 0 72px', alignSelf: 'stretch', border: '1px solid #666',
     borderRadius: '6px', background: '#444b56', color: '#fff', cursor: 'pointer',
   });
   button.addEventListener('click', () => { void openHistory(node, field, label); });
@@ -298,8 +298,8 @@ async function saveCurrent(node) {
     } catch (error) {
       if (error.status !== 409 || !Array.isArray(error.conflicts)) throw error;
       const labels = error.conflicts.map((key) => FIELDS.find(([field]) => field === key)?.[1] ?? key);
-      const message = labels.map((label) => `${label}には既に同じPhoto IDが別の文字列に付いています。`).join('\n');
-      if (!window.confirm(`${message}\nPhoto ID「${error.photoId}」の割り当てを上書きしますか？`)) return;
+      const message = labels.map((label) => `${label} already has different text assigned to this Photo ID.`).join('\n');
+      if (!window.confirm(`${message}\nOverwrite the assignments for Photo ID "${error.photoId}"?`)) return;
       result = await request(PATH, { ...payload, photo_id: error.photoId, overwrite: true });
     }
     if (node.photoControls) node.photoControls.select.value = result.saved_photo_id;
@@ -326,11 +326,11 @@ function openRenamePhotoId(node) {
     const submit = async () => {
       const newId = input.value;
       if (!PHOTO_ID_RE.test(newId)) {
-        errorText.textContent = 'Photo IDは1～24文字の英数字または !#$%*+-./:;=?@_~ にしてください。';
+        errorText.textContent = 'Photo ID must be 1–24 characters: A–Z, a–z, 0–9, or !#$%*+-./:;=?@_~.';
         return;
       }
       if (Object.hasOwn(cache.photo_ids, newId)) {
-        errorText.textContent = 'このPhoto IDは既に使用されています。';
+        errorText.textContent = 'This Photo ID is already in use.';
         return;
       }
       try {
@@ -351,7 +351,7 @@ function openRenamePhotoId(node) {
 async function deleteSelectedPhotoId(node) {
   const photoId = selectedPhotoId(node);
   if (!photoId) return notify('Select a Photo ID to delete.');
-  if (!window.confirm(`Photo ID「${photoId}」をすべての要素から削除しますか？\n文字列履歴は残ります。`)) return;
+  if (!window.confirm(`Delete Photo ID "${photoId}" from all sections?\nText history will remain.`)) return;
   try {
     const inputs = [...nodes].filter((item) => widget(item, 'photo_id')?.value === photoId);
     await request(`${PHOTO_ID_PATH}/delete`, { photo_id: photoId });
