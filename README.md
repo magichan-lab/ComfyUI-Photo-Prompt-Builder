@@ -54,8 +54,13 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 - Use the native multiline text fields for direct editing.
 - Click the `履歴` button to the right of an input field to open a dialog with a selectable history list. Inspect the full text, apply a value, delete one value, or clear that section's history.
 - Click `Save current values to history` to save immediately (even when `auto_save_history` is off).
+- Manual save assigns one Photo ID to all enabled, nonempty fields. Leave the `photo_id` input blank to use the save time in `yymmddHHMMSS` format, or enter up to 24 letters, digits, and `!#$%*+-./:;=?@_~` characters.
+- Choose an ID from the node's `Select Photo ID` dropdown to restore its saved combination. Fields without that ID become blank and disabled. Choosing an ID also fills the `photo_id` input, so saving again updates that ID.
+- A string can have multiple IDs. Saving an existing ID replaces its earlier associations. Disabled strings remain in ordinary history but receive no ID on that save.
+- If an ID is already assigned to different text in the same field, a confirmation dialog lists the affected fields before saving. Cancel leaves the saved combination unchanged. Reusing the same text or adding fields without a conflict needs no confirmation.
 - Click `Preview combined prompt` to inspect/copy the generated prompt without running the sampler.
 - Duplicate values are removed, and the most recently saved entry appears first. Histories are independent for all nine categories.
+- Tagged strings survive `history_limit`. Deleting or clearing history removes the affected fields from their Photo IDs.
 - **History is shared by all builder nodes in the same ComfyUI installation.** Current values/toggles are also saved in each ComfyUI workflow.
 
 ## Storage and backup
@@ -68,6 +73,7 @@ The history lives at `ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/pro
 
 - Each input field has a history button on its right. The dialog shows history as a list, while ComfyUI's built-in widget retains the input value for workflow serialization.
 - Generation-triggered autosave runs only when the builder's Python node executes. Cached/unexecuted runs do not update the history; use the manual save action.
+- Autosave does not assign Photo IDs. Use manual save to preserve a combination. Two default saves within the same second update the same ID.
 - The built-in node inputs are `STRING`, not `CONDITIONING`; use a compatible text encoder downstream.
 - The JavaScript UI uses ComfyUI's classic LiteGraph `addWidget` integration. The backend works independently of the extra controls. Frontend behavior may vary in future / Nodes 2.0-only builds; test on the ComfyUI version in use.
 - Use this node only on trusted ComfyUI instances: anyone with access to the ComfyUI HTTP API can read/change the shared history, like other local ComfyUI data.

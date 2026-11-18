@@ -69,6 +69,64 @@ class TestHistory(unittest.TestCase):
         self.assertEqual(history['hair_makeup'], [])
         self.assertEqual(history['expression'], [])
 
+    def test_photo_id_reuses_text_and_restores_only_enabled_fields(self):
+        self.h.add_entries({'subject': 'A', 'lighting': 'soft'}, photo_id='A-1',
+                           enabled={'subject': True, 'lighting': False})
+        self.h.add_entries({'subject': 'A', 'lighting': 'hard'}, photo_id='B-2')
+        self.assertEqual(self.h.read_photo_ids()['A-1'], {'subject': 'A'})
+        self.assertEqual(self.h.read_photo_ids()['B-2'],
+                         {'subject': 'A', 'lighting': 'hard'})
+        saved = self.h.FILE.read_text(encoding='utf-8')
+        self.assertIn('"photo_ids": [', saved)
+        self.assertIn('"A-1"', saved)
+        self.assertIn('"B-2"', saved)
+
+    def test_resaving_id_moves_association_and_deletion_updates_index(self):
+        self.h.add_entries({'subject': 'Old', 'pose': 'Standing'}, photo_id='photo:1')
+        with self.assertRaises(self.h.PhotoIdConflict) as raised:
+            self.h.add_entries({'subject': 'New'}, photo_id='photo:1')
+        self.assertEqual(raised.exception.fields, ['subject'])
+        self.assertEqual(self.h.read_photo_ids()['photo:1'],
+                         {'subject': 'Old', 'pose': 'Standing'})
+        self.h.add_entries({'subject': 'New'}, photo_id='photo:1', overwrite=True)
+        self.assertEqual(self.h.read_photo_ids()['photo:1'], {'subject': 'New'})
+        self.h.delete_entry('subject', 'New')
+        self.assertNotIn('photo:1', self.h.read_photo_ids())
+
+    def test_same_text_and_new_field_do_not_require_confirmation(self):
+        self.h.add_entries({'subject': 'Same'}, photo_id='shared')
+        self.h.add_entries({'subject': 'Same', 'pose': 'Standing'}, photo_id='shared')
+        self.assertEqual(self.h.read_photo_ids()['shared'],
+                         {'subject': 'Same', 'pose': 'Standing'})
+
+    def test_conflicts_report_all_changed_enabled_fields(self):
+        self.h.add_entries({'subject': 'Old', 'pose': 'Old pose', 'lighting': 'Soft'},
+                           photo_id='shared')
+        with self.assertRaises(self.h.PhotoIdConflict) as raised:
+            self.h.add_entries({'subject': 'New', 'pose': 'New pose', 'lighting': 'Hard'},
+                               photo_id='shared', enabled={'lighting': False})
+        self.assertEqual(raised.exception.fields, ['subject', 'pose'])
+        self.assertEqual(self.h.read_photo_ids()['shared']['lighting'], 'Soft')
+
+    def test_tagged_entries_survive_history_limit(self):
+        self.h.add_entries({'subject': 'Pinned'}, photo_id='pin')
+        self.h.add_entries({'subject': 'One'}, limit=1)
+        self.h.add_entries({'subject': 'Two'}, limit=1)
+        self.assertEqual(self.h.read_history()['subject'], ['Two', 'Pinned'])
+        self.assertEqual(self.h.read_photo_ids()['pin'], {'subject': 'Pinned'})
+
+    def test_auto_id_and_validation(self):
+        result = self.h.add_entries({'subject': 'A'}, photo_id='')
+        self.assertRegex(result['saved_photo_id'], r'^\d{12}$')
+        for photo_id in ('a b', '日本語', 'a' * 25, 'bad&'):
+            with self.subTest(photo_id=photo_id), self.assertRaises(ValueError):
+                self.h.add_entries({'subject': 'B'}, photo_id=photo_id)
+        self.assertEqual(self.h.read_history()['subject'], ['A'])
+        self.h.add_entries({'subject': 'B'}, photo_id='a' * 24)
+        with self.assertRaises(ValueError):
+            self.h.add_entries({'subject': 'C'}, photo_id='unused', enabled={'subject': False})
+        self.assertNotIn('C', self.h.read_history()['subject'])
+
 
 class TestCompose(unittest.TestCase):
     def test_headings_blank_and_disabled(self):

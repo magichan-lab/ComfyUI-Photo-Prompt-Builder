@@ -39,6 +39,7 @@ class Krea2PhotoPromptBuilder:
             required[f'use_{key}'] = ('BOOLEAN', {'default': True, 'label_on': 'Include', 'label_off': 'Exclude'})
         required['auto_save_history'] = ('BOOLEAN', {'default': True, 'label_on': 'On', 'label_off': 'Off'})
         required['history_limit'] = ('INT', {'default': 100, 'min': 1, 'max': 1000, 'step': 1})
+        required['photo_id'] = ('STRING', {'default': '', 'multiline': False})
         return {'required': required}
 
     def build(self, **kwargs):

@@ -1,7 +1,7 @@
 """Same-origin local ComfyUI server endpoints for the frontend extension."""
 from aiohttp import web
 from server import PromptServer
-from .history import FIELDS, MAX_TEXT_LENGTH, add_entries, clear_field, delete_entry, read_history
+from .history import PhotoIdConflict, add_entries, clear_field, delete_entry, read_state
 
 routes = PromptServer.instance.routes
 
@@ -15,7 +15,7 @@ def _error(exc):
 @routes.get('/magichanlab_photo_prompt/history')
 async def get_history(request):
     try:
-        return web.json_response({'history': read_history()})
+        return web.json_response(read_state())
     except (OSError, ValueError, RuntimeError) as exc:
         return _error(exc)
 
@@ -26,7 +26,12 @@ async def post_history(request):
         body = await request.json()
         if not isinstance(body, dict):
             raise ValueError('Request must be an object')
-        return web.json_response({'history': add_entries(body.get('entries', {}), body.get('limit', 100))})
+        return web.json_response(add_entries(body.get('entries', {}), body.get('limit', 100),
+                                             body.get('photo_id'), body.get('enabled'),
+                                             body.get('overwrite', False)))
+    except PhotoIdConflict as exc:
+        return web.json_response({'error': str(exc), 'photo_id': exc.photo_id,
+                                  'conflicts': exc.fields}, status=409)
     except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)
 
@@ -37,7 +42,7 @@ async def post_delete(request):
         body = await request.json()
         if not isinstance(body, dict):
             raise ValueError('Request must be an object')
-        return web.json_response({'history': delete_entry(body.get('field'), body.get('value'))})
+        return web.json_response(delete_entry(body.get('field'), body.get('value')))
     except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)
 
@@ -48,6 +53,6 @@ async def post_clear(request):
         body = await request.json()
         if not isinstance(body, dict):
             raise ValueError('Request must be an object')
-        return web.json_response({'history': clear_field(body.get('field'))})
+        return web.json_response(clear_field(body.get('field')))
     except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)

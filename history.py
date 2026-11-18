@@ -1,6 +1,8 @@
-"""Thread-safe JSON prompt history stored inside this custom-node directory."""
+"""Thread-safe JSON prompt history and Photo ID associations."""
 import json
 import os
+import re
+from datetime import datetime
 from pathlib import Path
 from threading import RLock
 
@@ -8,12 +10,20 @@ FIELDS = ('subject', 'appearance', 'hair_makeup', 'pose', 'expression',
           'environment', 'composition', 'lighting', 'finishing')
 MAX_TEXT_LENGTH = 8000
 DEFAULT_LIMIT = 100
+PHOTO_ID_PATTERN = re.compile(r'[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}\Z', re.ASCII)
 _LOCK = RLock()
 FILE = Path(__file__).resolve().parent / 'data' / 'prompt_history.json'
 
 
+class PhotoIdConflict(Exception):
+    def __init__(self, photo_id, fields):
+        self.photo_id = photo_id
+        self.fields = fields
+        super().__init__('Photo ID is already assigned to different text in: ' + ', '.join(fields))
+
+
 def _empty():
-    return {'version': 1, 'history': {field: [] for field in FIELDS}}
+    return {'version': 2, 'history': {field: [] for field in FIELDS}}
 
 
 def _read_unlocked():
@@ -27,10 +37,31 @@ def _read_unlocked():
     if not isinstance(obj, dict) or not isinstance(obj.get('history'), dict):
         raise ValueError('Invalid prompt history JSON format')
     result = _empty()
-    for key in FIELDS:
-        values = obj['history'].get(key, [])
-        if isinstance(values, list):
-            result['history'][key] = [v for v in values if isinstance(v, str)][:1000]
+    for field in FIELDS:
+        values = obj['history'].get(field, [])
+        if not isinstance(values, list):
+            continue
+        seen = set()
+        seen_ids = set()
+        for item in values:
+            if isinstance(item, str):
+                text, ids = item, []
+            elif isinstance(item, dict):
+                text, ids = item.get('text'), item.get('photo_ids', [])
+            else:
+                continue
+            if not isinstance(text, str) or text in seen or len(text) > MAX_TEXT_LENGTH:
+                continue
+            seen.add(text)
+            if not isinstance(ids, list):
+                ids = []
+            valid_ids = [i for i in ids if isinstance(i, str) and PHOTO_ID_PATTERN.fullmatch(i) and i not in seen_ids]
+            unique_ids = list(dict.fromkeys(valid_ids))
+            seen_ids.update(unique_ids)
+            result['history'][field].append({
+                'text': text,
+                'photo_ids': unique_ids,
+            })
     return result
 
 
@@ -47,13 +78,35 @@ def _write_unlocked(data):
             temp.unlink()
 
 
-def read_history():
+def _public(data):
+    return {field: [item['text'] for item in data['history'][field]] for field in FIELDS}
+
+
+def _photo_ids(data):
+    result = {}
+    for field in FIELDS:
+        for item in data['history'][field]:
+            for photo_id in item['photo_ids']:
+                result.setdefault(photo_id, {})[field] = item['text']
+    return result
+
+
+def read_state():
     with _LOCK:
-        return _read_unlocked()['history']
+        data = _read_unlocked()
+        return {'history': _public(data), 'photo_ids': _photo_ids(data)}
 
 
-def add_entries(entries, limit=DEFAULT_LIMIT):
-    """Newest first, deduplicated, one history per field. Returns updated history."""
+def read_history():
+    return read_state()['history']
+
+
+def read_photo_ids():
+    return read_state()['photo_ids']
+
+
+def add_entries(entries, limit=DEFAULT_LIMIT, photo_id=None, enabled=None, overwrite=False):
+    """Save strings; require confirmation before moving an ID to different text."""
     if not isinstance(entries, dict):
         raise ValueError('entries must be an object')
     if type(limit) is not int or not (1 <= limit <= 1000):
@@ -62,22 +115,60 @@ def add_entries(entries, limit=DEFAULT_LIMIT):
         raise ValueError('Unknown field')
     if any(not isinstance(v, str) or len(v) > MAX_TEXT_LENGTH for v in entries.values()):
         raise ValueError('Each value must be a string of at most 8000 characters')
+    if enabled is not None and (not isinstance(enabled, dict) or
+                                any(k not in FIELDS or type(v) is not bool for k, v in enabled.items())):
+        raise ValueError('enabled must contain boolean field values')
+    if type(overwrite) is not bool:
+        raise ValueError('overwrite must be a boolean')
+    if photo_id is not None:
+        if photo_id == '':
+            photo_id = datetime.now().strftime('%y%m%d%H%M%S')
+        if not isinstance(photo_id, str) or not PHOTO_ID_PATTERN.fullmatch(photo_id):
+            raise ValueError('Photo ID must be 1–24 characters: A–Z, a–z, 0–9, or !#$%*+-./:;=?@_~')
+        if not any(raw.strip() and (enabled is None or enabled.get(field, True))
+                   for field, raw in entries.items()):
+            raise ValueError('At least one enabled, nonempty field is required for a Photo ID')
     with _LOCK:
         data = _read_unlocked()
-        changed = False
-        for key, raw in entries.items():
+        if photo_id is not None and not overwrite:
+            assigned = _photo_ids(data).get(photo_id, {})
+            conflicts = [field for field, raw in entries.items()
+                         if raw.strip() and (enabled is None or enabled.get(field, True))
+                         and field in assigned and assigned[field] != raw.strip()]
+            if conflicts:
+                raise PhotoIdConflict(photo_id, conflicts)
+        before = json.dumps(data, ensure_ascii=False)
+        if photo_id is not None:
+            for items in data['history'].values():
+                for item in items:
+                    if photo_id in item['photo_ids']:
+                        item['photo_ids'].remove(photo_id)
+        for field, raw in entries.items():
             value = raw.strip()
             if not value:
                 continue
-            existing = data['history'][key]
-            updated = [value] + [v for v in existing if v != value]
-            updated = updated[:limit]
-            if updated != existing:
-                data['history'][key] = updated
-                changed = True
-        if changed:
+            items = data['history'][field]
+            existing = next((item for item in items if item['text'] == value), None)
+            if existing is None:
+                existing = {'text': value, 'photo_ids': []}
+            else:
+                items.remove(existing)
+            if photo_id is not None and (enabled is None or enabled.get(field, True)):
+                existing['photo_ids'].append(photo_id)
+            items.insert(0, existing)
+        # Tagged entries survive the history limit so saved combinations remain available.
+        for field in FIELDS:
+            untagged = 0
+            kept = []
+            for item in data['history'][field]:
+                if item['photo_ids'] or untagged < limit:
+                    kept.append(item)
+                    if not item['photo_ids']:
+                        untagged += 1
+            data['history'][field] = kept
+        if json.dumps(data, ensure_ascii=False) != before:
             _write_unlocked(data)
-        return data['history']
+        return {'history': _public(data), 'photo_ids': _photo_ids(data), 'saved_photo_id': photo_id}
 
 
 def delete_entry(field, value):
@@ -86,10 +177,10 @@ def delete_entry(field, value):
     with _LOCK:
         data = _read_unlocked()
         old = data['history'][field]
-        data['history'][field] = [v for v in old if v != value]
+        data['history'][field] = [item for item in old if item['text'] != value]
         if data['history'][field] != old:
             _write_unlocked(data)
-        return data['history']
+        return {'history': _public(data), 'photo_ids': _photo_ids(data)}
 
 
 def clear_field(field):
@@ -100,4 +191,4 @@ def clear_field(field):
         if data['history'][field]:
             data['history'][field] = []
             _write_unlocked(data)
-        return data['history']
+        return {'history': _public(data), 'photo_ids': _photo_ids(data)}
