@@ -17,7 +17,7 @@ ComfyUIに含まれる`aiohttp`以外に、pipでインストールする依存�
 
 ## Comfy Registryへの公開準備
 
-`pyproject.toml`に公開用のメタデータを、`.comfyignore`に公開アーカイブから除外するファイルを指定しています。Registry上のパッケージ名は`photo-prompt-builder`で、ComfyUI内部のノードIDとは別です。初回公開用のバージョン案は`0.1.0`です。
+`pyproject.toml`に公開用のメタデータを、`.comfyignore`に公開アーカイブから除外するファイルを指定しています。Registry上のパッケージ名は`photo-prompt-builder`で、ComfyUI内部のノードIDとは別です。現在のプレリリース版は`1.0.0rc1`です。
 
 1. [Comfy Registry](https://registry.comfy.org/)のPublisher ID `magichan`を使用します。`pyproject.toml`の`[tool.comfy].PublisherId`にも同じIDを設定しています。
 2. `pyproject.toml`のバージョンとメタデータを確認してください。公開済みのバージョンは変更できないため、次回以降の公開では`version`を更新します。
