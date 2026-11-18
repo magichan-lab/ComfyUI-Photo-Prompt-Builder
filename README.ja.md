@@ -66,7 +66,9 @@ Medium shot, eye-level, 50mm lens
 
 ## 保存場所とバックアップ
 
-履歴は`ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.json`に保存されます。人が読めるUTF-8形式で、ファイルの置き換えはアトミックに行われます。カスタムノードを再インストールまたは更新する前に、このファイルをバックアップしてください。
+履歴は`ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.json`に保存されます。人が読めるUTF-8形式で、ファイルの置き換えはアトミックに行われ、Git管理から除外されます。ファイルがない場合は、履歴を保存するまでGit管理下の`data/prompt_history_template.json`を参照します。カスタムノードを再インストールする前には履歴をバックアップしてください。
+
+旧バージョンからの初回更新では、これまでGit管理されていた`prompt_history.json`をリポジトリ外にコピーしてから、`git restore data/prompt_history.json`、`git pull`の順に実行し、バックアップを`data/prompt_history.json`へ戻してください。以後の更新は通常どおり`git pull`できます。
 
 **Google Colab**：Colabの一時的な実行環境では、ランタイムをリセットするとローカルの履歴が削除されます。履歴を残すには、`data`ディレクトリをGoogle Drive上の永続ストレージにバックアップするか、シンボリックリンクを作成してください。このプロジェクトはDriveを自動でマウントしません。
 

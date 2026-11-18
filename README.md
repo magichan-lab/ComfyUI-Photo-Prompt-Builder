@@ -68,7 +68,9 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 
 ## Storage and backup
 
-The history lives at `ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.json`. It is human-readable UTF-8 and written using atomic replacement. Back this file up before reinstalling or upgrading the custom node.
+The history lives at `ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.json`. It is human-readable UTF-8, written using atomic replacement, and excluded from Git. If the file is missing, the node reads the tracked `data/prompt_history_template.json` until history is saved. Back up `prompt_history.json` before reinstalling the custom node.
+
+For the first update from an older checkout that still tracks `prompt_history.json`, copy it outside the repository, run `git restore data/prompt_history.json` and `git pull`, then copy the backup back to `data/prompt_history.json`. Later updates can use `git pull` directly.
 
 **Google Colab**: Colab's ephemeral runtime deletes the local history when the runtime is reset. To retain it, back up or symlink the `data` directory to persistent Google Drive storage. This project does not automatically mount Drive.
 

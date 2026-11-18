@@ -21,11 +21,27 @@ class TestHistory(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.original = self.h.FILE
+        self.original_template = self.h.TEMPLATE_FILE
         self.h.FILE = Path(self.temp.name) / 'history.json'
+        self.h.TEMPLATE_FILE = Path(self.temp.name) / 'template.json'
+        template = ROOT / 'data' / 'prompt_history_template.json'
+        self.h.TEMPLATE_FILE.write_text(template.read_text(encoding='utf-8'), encoding='utf-8')
 
     def tearDown(self):
         self.h.FILE = self.original
+        self.h.TEMPLATE_FILE = self.original_template
         self.temp.cleanup()
+
+    def test_missing_history_uses_template_then_saved_history(self):
+        self.h.TEMPLATE_FILE.write_text(
+            '{"version": 2, "history": {"subject": [{"text": "Default", "photo_ids": []}]}}',
+            encoding='utf-8')
+        self.assertEqual(self.h.read_history()['subject'], ['Default'])
+        self.assertFalse(self.h.FILE.exists())
+        self.h.add_entries({'subject': 'Saved'})
+        self.assertEqual(self.h.read_history()['subject'], ['Saved', 'Default'])
+        self.h.TEMPLATE_FILE.write_text('{"version": 2, "history": {}}', encoding='utf-8')
+        self.assertEqual(self.h.read_history()['subject'], ['Saved', 'Default'])
 
     def test_add_deduplicate_limit_delete(self):
         self.h.add_entries({'subject': 'A', 'appearance': 'White shirt'}, limit=2)

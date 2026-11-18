@@ -13,6 +13,7 @@ DEFAULT_LIMIT = 100
 PHOTO_ID_PATTERN = re.compile(r'[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}\Z', re.ASCII)
 _LOCK = RLock()
 FILE = Path(__file__).resolve().parent / 'data' / 'prompt_history.json'
+TEMPLATE_FILE = Path(__file__).resolve().parent / 'data' / 'prompt_history_template.json'
 
 
 class PhotoIdConflict(Exception):
@@ -27,10 +28,9 @@ def _empty():
 
 
 def _read_unlocked():
-    if not FILE.exists():
-        return _empty()
+    source = FILE if FILE.exists() else TEMPLATE_FILE
     try:
-        with FILE.open('r', encoding='utf-8') as f:
+        with source.open('r', encoding='utf-8') as f:
             obj = json.load(f)
     except (OSError, ValueError) as e:
         raise RuntimeError(f'Unable to read prompt history: {e}') from e
