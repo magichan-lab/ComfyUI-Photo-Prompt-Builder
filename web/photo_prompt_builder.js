@@ -67,12 +67,18 @@ function markReferenceSelection(node) {
   }
 }
 
+function referenceIds(node) {
+  const query = node.referenceSearch?.value.trim().toLocaleLowerCase() ?? '';
+  return Object.keys(cache.photo_ids)
+    .filter((id) => id.toLocaleLowerCase().includes(query))
+    .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
+}
+
 function renderReferenceGallery(node) {
   const gallery = node.referenceGallery;
   if (!gallery) return;
   gallery.replaceChildren();
-  const ids = Object.keys(cache.photo_ids)
-    .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
+  const ids = referenceIds(node);
   for (const photoId of ids) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -116,18 +122,18 @@ function renderReferenceGallery(node) {
     });
     gallery.append(button);
   }
-  if (!ids.length) gallery.textContent = 'No saved Photo IDs';
+  if (!ids.length) gallery.textContent = node.referenceSearch?.value.trim()
+    ? 'No matching Photo IDs' : 'No saved Photo IDs';
   markReferenceSelection(node);
 }
 
 function refreshReferencePhotoIds(node) {
   const photoWidget = widget(node, 'photo_id');
   if (!photoWidget) return;
-  const ids = Object.keys(cache.photo_ids)
-    .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
+  const ids = referenceIds(node);
   photoWidget.options ??= {};
   photoWidget.options.values = [SELECT_ID, ...ids];
-  if (!ids.includes(photoWidget.value)) photoWidget.value = SELECT_ID;
+  if (!Object.hasOwn(cache.photo_ids, photoWidget.value)) photoWidget.value = SELECT_ID;
   renderReferenceGallery(node);
   node.setDirtyCanvas?.(true, true);
 }
@@ -563,6 +569,22 @@ app.registerExtension({
             return callbackResult;
           };
         }
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.placeholder = 'Search Photo ID';
+        search.setAttribute('aria-label', 'Search Photo ID');
+        Object.assign(search.style, {
+          boxSizing: 'border-box', width: '100%', height: '100%', padding: '5px',
+          background: '#17191c', color: '#fff', border: '1px solid #666',
+          borderRadius: '6px',
+        });
+        this.referenceSearch = search;
+        search.addEventListener('input', () => refreshReferencePhotoIds(this));
+        const searchWidget = this.addDOMWidget('Search Photo ID', 'photo_id_search', search, {
+          serialize: false, hideOnZoom: false,
+          getMinHeight: () => 30, getHeight: () => 30,
+        });
+        searchWidget.serialize = false;
         const gallery = document.createElement('div');
         gallery.setAttribute('aria-label', 'Photo ID examples');
         Object.assign(gallery.style, {
