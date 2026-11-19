@@ -231,8 +231,14 @@ class TestCompose(unittest.TestCase):
             mod = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(mod)
         self.assertEqual(mod.NODE_ID, 'MagichanLab_Krea2PhotoPromptBuilder')
-        self.assertEqual(mod.NODE_CLASS_MAPPINGS, {mod.NODE_ID: mod.Krea2PhotoPromptBuilder})
-        self.assertEqual(mod.NODE_DISPLAY_NAME_MAPPINGS, {mod.NODE_ID: 'Krea2 Photo Prompt Builder'})
+        self.assertEqual(mod.NODE_CLASS_MAPPINGS, {
+            mod.NODE_ID: mod.Krea2PhotoPromptBuilder,
+            mod.REFERENCE_NODE_ID: mod.Krea2PhotoPromptReference,
+        })
+        self.assertEqual(mod.NODE_DISPLAY_NAME_MAPPINGS, {
+            mod.NODE_ID: 'Krea2 Photo Prompt Builder',
+            mod.REFERENCE_NODE_ID: 'Krea2 Photo Prompt Reference',
+        })
         output = mod.compose_prompt(
             {'subject': ' A woman ', 'appearance': 'black hair', 'lighting': '  '},
             {'subject': True, 'appearance': False})
@@ -250,6 +256,40 @@ class TestCompose(unittest.TestCase):
         for field in ('appearance', 'hair_makeup', 'pose', 'expression'):
             self.assertIn(field, inputs)
             self.assertIn(f'use_{field}', inputs)
+
+    def test_reference_reads_current_combination_without_writing(self):
+        import sys
+        import types
+        from unittest.mock import patch
+        history = load('history_for_reference', 'history.py')
+        with tempfile.TemporaryDirectory() as directory:
+            history.FILE = Path(directory) / 'history.json'
+            history.add_entries({'subject': ' A woman ', 'lighting': 'Soft light',
+                                 'pose': 'Unused'}, photo_id='photo-1',
+                                enabled={'pose': False})
+            package = types.ModuleType('testreference')
+            package.__path__ = [str(ROOT)]
+            with patch.dict(sys.modules, {'testreference': package,
+                                          'testreference.history': history}):
+                spec = importlib.util.spec_from_file_location('testreference.nodes', ROOT / 'nodes.py')
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+            reference = mod.Krea2PhotoPromptReference()
+            self.assertEqual(set(reference.INPUT_TYPES()['required']), {'photo_id'})
+            self.assertEqual(reference.INPUT_TYPES()['required']['photo_id'][0],
+                             [mod.SELECT_PHOTO_ID, 'photo-1'])
+            before = history.FILE.read_bytes()
+            self.assertEqual(reference.build('photo-1'),
+                             ('Subject:\nA woman\n\nLighting:\nSoft light',))
+            self.assertEqual(history.FILE.read_bytes(), before)
+            with self.assertRaisesRegex(ValueError, 'Select a Photo ID'):
+                reference.build(mod.SELECT_PHOTO_ID)
+            with self.assertRaisesRegex(ValueError, 'does not exist'):
+                reference.build('missing')
+            cache_key = reference.IS_CHANGED('photo-1')
+            history.add_entries({'subject': 'Updated'}, photo_id='photo-1', overwrite=True)
+            self.assertNotEqual(reference.IS_CHANGED('photo-1'), cache_key)
+            self.assertEqual(reference.build('photo-1'), ('Subject:\nUpdated',))
 
 
 if __name__ == '__main__':

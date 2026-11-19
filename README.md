@@ -2,7 +2,7 @@
 
 [日本語版 README](README.ja.md)
 
-A single ComfyUI node that builds a labeled, nine-section photography prompt and keeps category-specific input history in a local JSON file.
+ComfyUI nodes for building labeled, nine-section photography prompts with local JSON history and reading saved Photo ID combinations.
 
 ## Installation
 
@@ -19,7 +19,7 @@ No pip dependencies beyond ComfyUI's own `aiohttp` are required.
 
 ## Comfy Registry publishing
 
-The repository includes `pyproject.toml` metadata and a `.comfyignore` release filter. The Registry package name is `photo-prompt-builder` (distinct from the internal node ID). The current prerelease version is `1.0.0rc1`.
+The repository includes `pyproject.toml` metadata and a `.comfyignore` release filter. The Registry package name is `photo-prompt-builder` (distinct from the internal node IDs). The current prerelease version is `1.0.0rc1`.
 
 1. Use the `magichan` publisher at [Comfy Registry](https://registry.comfy.org/). The same ID is set in `[tool.comfy].PublisherId` in `pyproject.toml`.
 2. Review the version and metadata in `pyproject.toml`. Increment `version` for each later release; a published version cannot be changed.
@@ -27,9 +27,13 @@ The repository includes `pyproject.toml` metadata and a `.comfyignore` release f
 
 The `.comfyignore` file excludes the local prompt history, test files, preview, and Python bytecode from the Registry archive. Keep `data/prompt_history_template.json` in the package because the node reads it before the first save. See the [official publishing guide](https://docs.comfy.org/registry/publishing) for account and key setup.
 
-The internal ComfyUI node ID is `MagichanLab_Krea2PhotoPromptBuilder`. Workflows saved with the earlier ID `Krea2PhotoPromptBuilder` need their node type changed to the new ID before loading this version. The displayed node name remains **Krea2 Photo Prompt Builder**.
+The internal ComfyUI node IDs are `MagichanLab_Krea2PhotoPromptBuilder` and `MagichanLab_Krea2PhotoPromptReference`. Workflows saved with the earlier builder ID `Krea2PhotoPromptBuilder` need their node type changed to `MagichanLab_Krea2PhotoPromptBuilder` before loading this version. The displayed builder name remains **Krea2 Photo Prompt Builder**.
 
 ## Inputs
+
+**Krea2 Photo Prompt Reference**, under `prompt/photo`, has only a Photo ID dropdown. It reads the selected combination from shared history when executed and outputs the same labeled `prompt` (STRING) as the builder, ready for a CLIP text encoder's `text` input. It never saves or edits history. Running without a selected Photo ID, or with a deleted ID, raises an error. The dropdown refreshes when the node is added or the builder saves a Photo ID.
+
+The following inputs belong to **Krea2 Photo Prompt Builder**.
 
 - `subject`: number, age, gender, ethnic background, appearance, build
 - `appearance` (Clothing): clothing, accessories

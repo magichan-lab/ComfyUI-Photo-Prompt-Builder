@@ -1,6 +1,6 @@
 # Krea2 Photo Prompt Builder for ComfyUI
 
-写真用プロンプトをラベル付きの9項目で組み立て、項目ごとの入力履歴をローカルのJSONファイルに保存するComfyUIカスタムノードです。
+写真用プロンプトをラベル付きの9項目で組み立て、項目ごとの入力履歴をローカルのJSONファイルに保存するComfyUIカスタムノードです。保存済みPhoto IDを読み込むだけの参照ノードも含みます。
 
 ## インストール
 
@@ -25,9 +25,13 @@ ComfyUIに含まれる`aiohttp`以外に、pipでインストールする依存�
 
 `.comfyignore`はローカルのプロンプト履歴、テスト、プレビュー、Pythonバイトコードを公開アーカイブから除外します。初回保存前に読み込む`data/prompt_history_template.json`は公開アーカイブに含めます。アカウントとキーの作成方法は[公式の公開手順](https://docs.comfy.org/registry/publishing)を参照してください。
 
-ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`です。旧IDの`Krea2PhotoPromptBuilder`で保存したワークフローをこのバージョンで読み込むには、ワークフロー内のノードタイプを新しいIDに変更する必要があります。画面上のノード名は引き続き**Krea2 Photo Prompt Builder**です。
+ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`と`MagichanLab_Krea2PhotoPromptReference`です。旧IDの`Krea2PhotoPromptBuilder`で保存したワークフローをこのバージョンで読み込むには、ワークフロー内のノードタイプを`MagichanLab_Krea2PhotoPromptBuilder`に変更する必要があります。画面上のビルダーノード名は引き続き**Krea2 Photo Prompt Builder**です。
 
 ## 入力項目
+
+**Krea2 Photo Prompt Reference**は`prompt/photo`カテゴリにある参照専用ノードです。入力は保存済みPhoto IDのドロップダウンのみです。選択したIDに関連する9項目を実行時に共有履歴から読み込み、ビルダーと同じ見出し・順序の`prompt`（STRING）を出力します。CLIPTextEncodeの`text`入力に接続できます。履歴の保存・編集・削除は行いません。Photo IDが未選択、または削除済みの場合は実行エラーになります。新しいIDの候補はノード追加時やビルダーで保存した際に更新されます。
+
+以下は**Krea2 Photo Prompt Builder**の入力項目です。
 
 - `subject`：人数、年齢、性別、民族的背景、容姿、体格
 - `appearance`（Clothing）：服装、アクセサリー

@@ -1,5 +1,7 @@
-"""ComfyUI legacy-style node. Inputs remain regular workflow-serializable widgets."""
-from .history import FIELDS, add_entries
+"""ComfyUI nodes for editing and reading photographic prompts."""
+import json
+
+from .history import FIELDS, add_entries, read_photo_ids
 
 HEADINGS = {
     'subject': 'Subject',
@@ -55,5 +57,41 @@ class Krea2PhotoPromptBuilder:
 
 
 NODE_ID = 'MagichanLab_Krea2PhotoPromptBuilder'
-NODE_CLASS_MAPPINGS = {NODE_ID: Krea2PhotoPromptBuilder}
-NODE_DISPLAY_NAME_MAPPINGS = {NODE_ID: 'Krea2 Photo Prompt Builder'}
+REFERENCE_NODE_ID = 'MagichanLab_Krea2PhotoPromptReference'
+SELECT_PHOTO_ID = '(Select Photo ID)'
+
+
+class Krea2PhotoPromptReference:
+    CATEGORY = 'prompt/photo'
+    FUNCTION = 'build'
+    RETURN_TYPES = ('STRING',)
+    RETURN_NAMES = ('prompt',)
+    DESCRIPTION = 'Read a saved Photo ID combination without changing prompt history.'
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {'required': {'photo_id': ([SELECT_PHOTO_ID, *sorted(read_photo_ids())],
+                                          {'default': SELECT_PHOTO_ID})}}
+
+    @classmethod
+    def IS_CHANGED(cls, photo_id):
+        # Invalidate ComfyUI's execution cache when a saved combination changes.
+        return json.dumps(read_photo_ids().get(photo_id), ensure_ascii=False, sort_keys=True)
+
+    def build(self, photo_id):
+        if not photo_id or photo_id == SELECT_PHOTO_ID:
+            raise ValueError('Select a Photo ID before running the reference node.')
+        values = read_photo_ids().get(photo_id)
+        if values is None:
+            raise ValueError(f'Photo ID "{photo_id}" does not exist in saved history.')
+        return (compose_prompt(values, {}),)
+
+
+NODE_CLASS_MAPPINGS = {
+    NODE_ID: Krea2PhotoPromptBuilder,
+    REFERENCE_NODE_ID: Krea2PhotoPromptReference,
+}
+NODE_DISPLAY_NAME_MAPPINGS = {
+    NODE_ID: 'Krea2 Photo Prompt Builder',
+    REFERENCE_NODE_ID: 'Krea2 Photo Prompt Reference',
+}

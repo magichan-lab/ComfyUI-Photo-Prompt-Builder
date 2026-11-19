@@ -2,6 +2,7 @@ import { app } from '../../scripts/app.js';
 import { api } from '../../scripts/api.js';
 
 const NODE_TYPE = 'MagichanLab_Krea2PhotoPromptBuilder';
+const REFERENCE_NODE_TYPE = 'MagichanLab_Krea2PhotoPromptReference';
 const FIELDS = [
   ['subject', 'Subject'],
   ['appearance', 'Clothing'],
@@ -17,6 +18,7 @@ const PATH = '/magichanlab_photo_prompt/history';
 const PHOTO_ID_PATH = '/magichanlab_photo_prompt/photo_id';
 const cache = { history: null, photo_ids: {} };
 const nodes = new Set();
+const referenceNodes = new Set();
 const PHOTO_ID_RE = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
 const SELECT_ID = '(Select Photo ID)';
 const photoIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -42,6 +44,18 @@ function syncPhotoIds(photoIds) {
   for (const node of nodes) {
     if (node.photoControls) renderPhotoIds(node);
   }
+  for (const node of referenceNodes) refreshReferencePhotoIds(node);
+}
+
+function refreshReferencePhotoIds(node) {
+  const photoWidget = widget(node, 'photo_id');
+  if (!photoWidget) return;
+  const ids = Object.keys(cache.photo_ids)
+    .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
+  photoWidget.options ??= {};
+  photoWidget.options.values = [SELECT_ID, ...ids];
+  if (!ids.includes(photoWidget.value)) photoWidget.value = SELECT_ID;
+  node.setDirtyCanvas?.(true, true);
 }
 
 async function request(path, body = undefined) {
@@ -461,6 +475,21 @@ function fitNodeToWidgets(node) {
 app.registerExtension({
   name: 'MagichanLab_photo_prompt_builder',
   async beforeRegisterNodeDef(nodeType, nodeData) {
+    if (nodeData.name === REFERENCE_NODE_TYPE) {
+      const oldCreated = nodeType.prototype.onNodeCreated;
+      nodeType.prototype.onNodeCreated = function (...args) {
+        const result = oldCreated?.apply(this, args);
+        referenceNodes.add(this);
+        const oldRemoved = this.onRemoved;
+        this.onRemoved = function (...removeArgs) {
+          referenceNodes.delete(this);
+          return oldRemoved?.apply(this, removeArgs);
+        };
+        void request(PATH).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
+        return result;
+      };
+      return;
+    }
     if (nodeData.name !== NODE_TYPE) return;
     const oldCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function (...args) {
