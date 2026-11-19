@@ -16,7 +16,7 @@ const FIELDS = [
 ];
 const PATH = '/magichanlab_photo_prompt/history';
 const PHOTO_ID_PATH = '/magichanlab_photo_prompt/photo_id';
-const cache = { history: null, photo_ids: {} };
+const cache = { history: null, photo_ids: {}, images: {} };
 const nodes = new Set();
 const referenceNodes = new Set();
 const PHOTO_ID_RE = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
@@ -45,6 +45,79 @@ function syncPhotoIds(photoIds) {
     if (node.photoControls) renderPhotoIds(node);
   }
   for (const node of referenceNodes) refreshReferencePhotoIds(node);
+  if (referenceNodes.size) void refreshReferenceImages().catch((error) =>
+    notify(`Cannot load example images: ${error.message}`));
+}
+
+async function refreshReferenceImages() {
+  const response = await api.fetchApi(`${PHOTO_ID_PATH}/images`);
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const result = await response.json();
+  cache.images = result.images ?? {};
+  for (const node of referenceNodes) renderReferenceGallery(node);
+}
+
+function markReferenceSelection(node) {
+  const selected = widget(node, 'photo_id')?.value;
+  for (const button of node.referenceGallery?.querySelectorAll('button') ?? []) {
+    const active = button.dataset.photoId === selected;
+    button.setAttribute('aria-pressed', String(active));
+    button.style.borderColor = active ? '#74a9ed' : '#666';
+    button.style.background = active ? '#30445e' : '#25272c';
+  }
+}
+
+function renderReferenceGallery(node) {
+  const gallery = node.referenceGallery;
+  if (!gallery) return;
+  gallery.replaceChildren();
+  const ids = Object.keys(cache.photo_ids)
+    .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
+  for (const photoId of ids) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.photoId = photoId;
+    button.title = photoId;
+    Object.assign(button.style, {
+      display: 'flex', flexDirection: 'column', alignItems: 'stretch', minWidth: '0',
+      padding: '4px', border: '1px solid #666', borderRadius: '6px',
+      background: '#25272c', color: '#fff', cursor: 'pointer',
+    });
+    const image = document.createElement('div');
+    Object.assign(image.style, {
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      height: '76px', width: '100%', overflow: 'hidden', borderRadius: '4px',
+      background: '#17191c', color: '#aaa', fontSize: '11px',
+    });
+    if (Object.hasOwn(cache.images, photoId)) {
+      const thumbnail = document.createElement('img');
+      thumbnail.alt = '';
+      thumbnail.loading = 'lazy';
+      thumbnail.src = `${PHOTO_ID_PATH}/image?${new URLSearchParams({ photo_id: photoId, v: cache.images[photoId] })}`;
+      Object.assign(thumbnail.style, { width: '100%', height: '100%', objectFit: 'cover' });
+      image.append(thumbnail);
+    } else {
+      image.textContent = 'No image';
+    }
+    const label = document.createElement('span');
+    label.textContent = photoId;
+    Object.assign(label.style, {
+      marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      fontSize: '11px', textAlign: 'center',
+    });
+    button.append(image, label);
+    button.addEventListener('click', () => {
+      const photoWidget = widget(node, 'photo_id');
+      if (!photoWidget) return;
+      photoWidget.value = photoId;
+      photoWidget.callback?.(photoId);
+      markReferenceSelection(node);
+      node.setDirtyCanvas?.(true, true);
+    });
+    gallery.append(button);
+  }
+  if (!ids.length) gallery.textContent = 'No saved Photo IDs';
+  markReferenceSelection(node);
 }
 
 function refreshReferencePhotoIds(node) {
@@ -55,6 +128,7 @@ function refreshReferencePhotoIds(node) {
   photoWidget.options ??= {};
   photoWidget.options.values = [SELECT_ID, ...ids];
   if (!ids.includes(photoWidget.value)) photoWidget.value = SELECT_ID;
+  renderReferenceGallery(node);
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -480,10 +554,43 @@ app.registerExtension({
       nodeType.prototype.onNodeCreated = function (...args) {
         const result = oldCreated?.apply(this, args);
         referenceNodes.add(this);
+        const photoWidget = widget(this, 'photo_id');
+        if (photoWidget) {
+          const oldCallback = photoWidget.callback;
+          photoWidget.callback = (...callbackArgs) => {
+            const callbackResult = oldCallback?.apply(photoWidget, callbackArgs);
+            markReferenceSelection(this);
+            return callbackResult;
+          };
+        }
+        const gallery = document.createElement('div');
+        gallery.setAttribute('aria-label', 'Photo ID examples');
+        Object.assign(gallery.style, {
+          display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: '5px', width: '100%', height: '100%', boxSizing: 'border-box',
+          padding: '4px', overflowY: 'auto', background: '#17191c',
+          border: '1px solid #555', borderRadius: '6px',
+        });
+        this.referenceGallery = gallery;
+        const galleryWidget = this.addDOMWidget('Photo ID examples', 'photo_id_gallery', gallery, {
+          serialize: false, hideOnZoom: false,
+          getMinHeight: () => 190, getHeight: () => 190,
+        });
+        galleryWidget.serialize = false;
+        renderReferenceGallery(this);
+        const [width, height] = this.computeSize();
+        this.setSize([Math.max(this.size[0], width, 320),
+                      Math.max(this.size[1], height, 260)]);
         const oldRemoved = this.onRemoved;
         this.onRemoved = function (...removeArgs) {
           referenceNodes.delete(this);
           return oldRemoved?.apply(this, removeArgs);
+        };
+        const oldConfigure = this.onConfigure;
+        this.onConfigure = function (...configureArgs) {
+          const configured = oldConfigure?.apply(this, configureArgs);
+          markReferenceSelection(this);
+          return configured;
         };
         void request(PATH).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
         return result;

@@ -292,5 +292,32 @@ class TestCompose(unittest.TestCase):
             self.assertEqual(reference.build('photo-1'), ('Subject:\nUpdated',))
 
 
+class TestImages(unittest.TestCase):
+    def test_local_example_lookup_uses_supported_files_only(self):
+        import sys
+        import types
+        from unittest.mock import patch
+        package = types.ModuleType('testimages')
+        package.__path__ = [str(ROOT)]
+        with patch.dict(sys.modules, {'testimages': package,
+                                      'testimages.history': load('history_for_images', 'history.py')}):
+            spec = importlib.util.spec_from_file_location('testimages.images', ROOT / 'images.py')
+            images = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(images)
+        with tempfile.TemporaryDirectory() as directory:
+            images.IMAGE_DIR = Path(directory) / 'images'
+            self.assertEqual(images.photo_images(), {})
+            images.IMAGE_DIR.mkdir()
+            (images.IMAGE_DIR / 'photo-1.jpg').write_bytes(b'jpg')
+            (images.IMAGE_DIR / 'photo-1.png').write_bytes(b'png')
+            (images.IMAGE_DIR / 'photo-2.webp').write_bytes(b'webp')
+            (images.IMAGE_DIR / 'invalid name.jpg').write_bytes(b'bad')
+            (images.IMAGE_DIR / 'photo-3.svg').write_text('<svg/>')
+            (images.IMAGE_DIR / 'linked.jpg').symlink_to(images.IMAGE_DIR / 'photo-1.jpg')
+            found = images.photo_images()
+            self.assertEqual(set(found), {'photo-1', 'photo-2'})
+            self.assertEqual(found['photo-1'].name, 'photo-1.png')
+
+
 if __name__ == '__main__':
     unittest.main()

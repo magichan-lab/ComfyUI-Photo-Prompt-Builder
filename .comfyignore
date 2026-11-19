@@ -1,5 +1,6 @@
 # The history file may contain private prompts and must never enter a release archive.
 data/prompt_history.json
+data/images/
 
 # Development-only files tracked in Git.
 tests/

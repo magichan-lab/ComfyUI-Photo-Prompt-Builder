@@ -1,7 +1,7 @@
 [project]
 name = "photo-prompt-builder"
 version = "1.0.0rc1"
-description = "Build nine-section photography prompts with reusable local history and Photo IDs in ComfyUI."
+description = "Build photography prompts with local history and browse saved Photo IDs with example image thumbnails in ComfyUI."
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }

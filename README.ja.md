@@ -29,7 +29,9 @@ ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`と`Magich
 
 ## 入力項目
 
-**Krea2 Photo Prompt Reference**は`prompt/photo`カテゴリにある参照専用ノードです。入力は保存済みPhoto IDのドロップダウンのみです。選択したIDに関連する9項目を実行時に共有履歴から読み込み、ビルダーと同じ見出し・順序の`prompt`（STRING）を出力します。CLIPTextEncodeの`text`入力に接続できます。履歴の保存・編集・削除は行いません。Photo IDが未選択、または削除済みの場合は実行エラーになります。新しいIDの候補はノード追加時やビルダーで保存した際に更新されます。
+**Krea2 Photo Prompt Reference**は`prompt/photo`カテゴリにある参照専用ノードです。ワークフロー入力は保存済みPhoto IDのドロップダウンのみです。選択したIDに関連する9項目を実行時に共有履歴から読み込み、ビルダーと同じ見出し・順序の`prompt`（STRING）を出力します。CLIPTextEncodeの`text`入力に接続できます。履歴の保存・編集・削除は行いません。Photo IDが未選択、または削除済みの場合は実行エラーになります。新しいIDの候補はノード追加時やビルダーで保存した際に更新されます。
+
+参照ノードでは、ドロップダウンの下にPhoto IDと画像例を並べた一覧も表示します。画像をクリックしてもIDを選択できます。画像例を使うには、`data/images/`フォルダーを作り、`photo-1`なら`data/images/photo-1.jpg`または`photo-1.png`のように保存してください。対応形式はPNG、JPG、JPEG、WebP、GIFです。同じIDで複数形式がある場合はこの順で1枚を表示します。画像のないIDも選択できます。`/`を含むPhoto IDはファイル名にできないため画像例を表示できません。画像はブラウザー上で縮小表示され、元ファイルは変更されません。個人の画像が公開パッケージに入らないよう、このフォルダーはGitとComfy Registryの公開対象から除外しています。
 
 以下は**Krea2 Photo Prompt Builder**の入力項目です。
 

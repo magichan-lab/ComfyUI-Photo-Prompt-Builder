@@ -2,8 +2,9 @@
 from aiohttp import web
 from server import PromptServer
 from .history import (PhotoIdConflict, add_entries, clear_field, delete_entry,
-                      delete_photo_id, export_data, import_data, read_state,
+                      delete_photo_id, export_data, import_data, read_photo_ids, read_state,
                       rename_photo_id)
+from .images import photo_images
 
 routes = PromptServer.instance.routes
 
@@ -18,6 +19,31 @@ def _error(exc):
 async def get_history(request):
     try:
         return web.json_response(read_state())
+    except (OSError, ValueError, RuntimeError) as exc:
+        return _error(exc)
+
+
+@routes.get('/magichanlab_photo_prompt/photo_id/images')
+async def get_photo_images(request):
+    try:
+        saved_ids = read_photo_ids()
+        images = {photo_id: path.stat().st_mtime_ns
+                  for photo_id, path in photo_images().items() if photo_id in saved_ids}
+        return web.json_response({'images': images}, headers={'Cache-Control': 'no-store'})
+    except (OSError, ValueError, RuntimeError) as exc:
+        return _error(exc)
+
+
+@routes.get('/magichanlab_photo_prompt/photo_id/image')
+async def get_photo_image(request):
+    photo_id = request.query.get('photo_id', '')
+    try:
+        if photo_id not in read_photo_ids():
+            raise web.HTTPNotFound()
+        path = photo_images().get(photo_id)
+        if path is None:
+            raise web.HTTPNotFound()
+        return web.FileResponse(path, headers={'Cache-Control': 'no-store'})
     except (OSError, ValueError, RuntimeError) as exc:
         return _error(exc)
 
