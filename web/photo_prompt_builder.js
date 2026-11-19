@@ -440,13 +440,22 @@ function addPhotoControls(node) {
   photoWidget.computeSize = () => [0, -4];
   photoWidget.draw = () => {};
   node.photoControls = { search, select, input };
+  // DOM widgets reserve 10px above and below the element by default.
   const options = { serialize: false, hideOnZoom: false,
-    getMinHeight: () => 36, getHeight: () => 36 };
+    getMinHeight: () => 56, getHeight: () => 56 };
   const firstWidget = node.addDOMWidget('Photo ID selection', 'photo_id_controls', first, options);
   const secondWidget = node.addDOMWidget('Photo ID actions', 'photo_id_controls', second, options);
   firstWidget.serialize = false;
   secondWidget.serialize = false;
   syncPhotoIds(cache.photo_ids);
+}
+
+function fitNodeToWidgets(node) {
+  const [widgetWidth, widgetHeight] = node.computeSize();
+  node.setSize([
+    Math.max(node.size[0], widgetWidth, 430),
+    Math.max(node.size[1], widgetHeight, 760),
+  ]);
 }
 
 app.registerExtension({
@@ -472,10 +481,11 @@ app.registerExtension({
         if (this.photoControls) {
           this.photoControls.input.value = String(widget(this, 'photo_id')?.value ?? '');
         }
+        fitNodeToWidgets(this);
         return configured;
       };
       void request(PATH).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
-      this.setSize([Math.max(this.size[0], 430), Math.max(this.size[1], 760)]);
+      fitNodeToWidgets(this);
       return result;
     };
   },

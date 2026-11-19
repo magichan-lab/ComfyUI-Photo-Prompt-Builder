@@ -118,6 +118,7 @@ class PreviewNode {
     this.widgets.push(widget);
     return widget;
   }
+  computeSize() { return this.size; }
   setSize(size) { this.size = size; }
   setDirtyCanvas() {}
 }
