@@ -1,12 +1,20 @@
 """ComfyUI endpoints for the frontend and JSON backup commands."""
+import asyncio
+from functools import partial
+
 from aiohttp import web
 from server import PromptServer
 from .history import (PhotoIdConflict, add_entries, clear_field, delete_entry,
-                      delete_photo_id, export_data, import_data, read_photo_ids, read_state,
-                      rename_photo_id)
+                      delete_photo_id, export_data, import_data, list_photo_ids,
+                      read_history_page, read_photo_id, read_state, rename_photo_id)
 from .images import photo_images
 
 routes = PromptServer.instance.routes
+
+
+async def _run(function, *args, **kwargs):
+    # SQLite lock waits and disk I/O must not block ComfyUI's event loop.
+    return await asyncio.get_running_loop().run_in_executor(None, partial(function, *args, **kwargs))
 
 
 def _error(exc):
@@ -18,7 +26,14 @@ def _error(exc):
 @routes.get('/magichanlab_photo_prompt/history')
 async def get_history(request):
     try:
-        return web.json_response(read_state())
+        field = request.query.get('field')
+        if field is not None:
+            before = request.query.get('before')
+            return web.json_response(await _run(
+                read_history_page, field, None if before is None else int(before),
+                int(request.query.get('page_size', '100'))))
+        return web.json_response(await _run(
+            read_state, include_history=request.query.get('include_history') != '0'))
     except (OSError, ValueError, RuntimeError) as exc:
         return _error(exc)
 
@@ -26,7 +41,7 @@ async def get_history(request):
 @routes.get('/magichanlab_photo_prompt/photo_id/images')
 async def get_photo_images(request):
     try:
-        saved_ids = read_photo_ids()
+        saved_ids = set(await _run(list_photo_ids))
         images = {photo_id: path.stat().st_mtime_ns
                   for photo_id, path in photo_images().items() if photo_id in saved_ids}
         return web.json_response({'images': images}, headers={'Cache-Control': 'no-store'})
@@ -38,7 +53,7 @@ async def get_photo_images(request):
 async def get_photo_image(request):
     photo_id = request.query.get('photo_id', '')
     try:
-        if photo_id not in read_photo_ids():
+        if await _run(read_photo_id, photo_id) is None:
             raise web.HTTPNotFound()
         path = photo_images().get(photo_id)
         if path is None:
@@ -51,7 +66,7 @@ async def get_photo_image(request):
 @routes.get('/magichanlab_photo_prompt/history/export')
 async def get_history_export(request):
     try:
-        return web.json_response(export_data(), headers={
+        return web.json_response(await _run(export_data), headers={
             'Content-Disposition': 'attachment; filename="photo-prompt-history.json"',
         })
     except (OSError, ValueError, RuntimeError) as exc:
@@ -61,7 +76,7 @@ async def get_history_export(request):
 @routes.post('/magichanlab_photo_prompt/history/import')
 async def post_history_import(request):
     try:
-        return web.json_response(import_data(await request.json()))
+        return web.json_response(await _run(import_data, await request.json()))
     except (OSError, ValueError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)
 
@@ -72,9 +87,9 @@ async def post_history(request):
         body = await request.json()
         if not isinstance(body, dict):
             raise ValueError('Request must be an object')
-        return web.json_response(add_entries(body.get('entries', {}), body.get('limit', 100),
-                                             body.get('photo_id'), body.get('enabled'),
-                                             body.get('overwrite', False)))
+        return web.json_response(await _run(add_entries, body.get('entries', {}),
+                                           body.get('photo_id'), body.get('enabled'),
+                                           body.get('overwrite', False), include_history=False))
     except PhotoIdConflict as exc:
         return web.json_response({'error': str(exc), 'photo_id': exc.photo_id,
                                   'conflicts': exc.fields}, status=409)
@@ -88,7 +103,7 @@ async def post_delete(request):
         body = await request.json()
         if not isinstance(body, dict):
             raise ValueError('Request must be an object')
-        return web.json_response(delete_entry(body.get('field'), body.get('value')))
+        return web.json_response(await _run(delete_entry, body.get('field'), body.get('value'), include_history=False))
     except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)
 
@@ -99,7 +114,7 @@ async def post_clear(request):
         body = await request.json()
         if not isinstance(body, dict):
             raise ValueError('Request must be an object')
-        return web.json_response(clear_field(body.get('field')))
+        return web.json_response(await _run(clear_field, body.get('field'), include_history=False))
     except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)
 
@@ -110,7 +125,7 @@ async def post_rename_photo_id(request):
         body = await request.json()
         if not isinstance(body, dict):
             raise ValueError('Request must be an object')
-        return web.json_response(rename_photo_id(body.get('old_id'), body.get('new_id')))
+        return web.json_response(await _run(rename_photo_id, body.get('old_id'), body.get('new_id'), include_history=False))
     except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)
 
@@ -121,6 +136,6 @@ async def post_delete_photo_id(request):
         body = await request.json()
         if not isinstance(body, dict):
             raise ValueError('Request must be an object')
-        return web.json_response(delete_photo_id(body.get('photo_id')))
+        return web.json_response(await _run(delete_photo_id, body.get('photo_id'), include_history=False))
     except (ValueError, TypeError, OSError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)

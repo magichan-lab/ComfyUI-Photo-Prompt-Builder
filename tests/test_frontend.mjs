@@ -1,0 +1,114 @@
+// Exercise the actual extension with a minimal DOM/ComfyUI adapter.
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import vm from 'node:vm';
+
+class Element {
+  constructor(tag) {
+    this.tag = tag;
+    this.style = {};
+    this.value = '';
+    this.children = [];
+    this.listeners = {};
+  }
+  append(...children) {
+    children.forEach(child => { child.parent = this; });
+    this.children.push(...children);
+  }
+  replaceChildren(...children) { this.children = []; this.append(...children); }
+  remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
+  setAttribute() {}
+  addEventListener(name, callback) { this.listeners[name] = callback; }
+}
+const body = new Element('body');
+const calls = [];
+const entries = Array.from({ length: 205 }, (_, i) => `Entry ${i}`);
+let extension;
+const context = vm.createContext({
+  URLSearchParams,
+  HTMLTextAreaElement: class {},
+  document: { body, createElement: tag => new Element(tag) },
+  window: { confirm: () => true },
+  app: { registerExtension(value) { extension = value; } },
+  api: { async fetchApi(path, options) {
+    calls.push({ path, options });
+    const query = new URL(path, 'http://localhost').searchParams;
+    if (query.has('field')) {
+      const start = Number(query.get('before') || 0);
+      return { ok: true, json: async () => ({
+        items: entries.slice(start, start + 100),
+        next_cursor: start + 100 < entries.length ? start + 100 : null,
+      }) };
+    }
+    return { ok: true, json: async () => ({ photo_ids: {}, saved_photo_id: 'photo-1' }) };
+  } },
+});
+const source = await readFile(new URL('../web/photo_prompt_builder.js', import.meta.url), 'utf8');
+vm.runInContext(source.replace(/^import .*;\r?\n/gm, ''), context);
+const { openHistory, saveCurrent, fields } = vm.runInContext('({openHistory, saveCurrent, fields: FIELDS})', context);
+class Builder {
+  constructor() {
+    this.widgets = fields.flatMap(([name]) => [{ name, value: '' }, { name: `use_${name}`, value: true }]);
+    this.widgets.push({ name: 'auto_save_history', value: true }, { name: 'photo_id', value: '' });
+    this.size = [430, 760];
+  }
+  addDOMWidget(name, type, element, options) {
+    const widget = { name, type, element, options };
+    this.widgets.push(widget);
+    return widget;
+  }
+  computeSize() { return this.size; }
+  setSize(size) { this.size = size; }
+}
+await extension.beforeRegisterNodeDef(Builder, { name: 'MagichanLab_Krea2PhotoPromptBuilder' });
+const node = new Builder();
+node.onNodeCreated();
+const photoWidget = node.widgets.find(widget => widget.name === 'photo_id');
+const oldValues = fields.flatMap(() => ['', true]);
+oldValues.push(true, 100, 'legacy-photo');
+photoWidget.value = 100; // Value assigned by the old positional serialization.
+node.onConfigure({ widgets_values: oldValues });
+assert.equal(photoWidget.value, 'legacy-photo');
+assert.equal(node.photoControls.input.value, 'legacy-photo');
+assert.equal(oldValues[19], 'legacy-photo');
+const currentValues = fields.flatMap(() => ['', true]);
+currentValues.push(true, '123');
+photoWidget.value = '123';
+node.onConfigure({ widgets_values: currentValues });
+assert.equal(photoWidget.value, '123');
+assert.equal(currentValues.length, 20);
+assert.ok(calls[0].path.endsWith('?include_history=0'));
+console.log('PASS: legacy workflow Photo ID restoration and current serialization');
+
+function actions() { return body.children.at(-1).children[0].children[2].children; }
+async function click(label) {
+  const button = actions().find(child => child.textContent === label);
+  assert.ok(button, `Missing ${label}`);
+  await button.listeners.click();
+  await new Promise(resolve => setImmediate(resolve));
+}
+await openHistory(node, 'subject', 'Subject');
+assert.ok(!actions().some(child => child.textContent === 'Previous page'));
+await click('Next page');
+assert.ok(calls.at(-1).path.includes('before=100'));
+await click('Next page');
+assert.ok(calls.at(-1).path.includes('before=200'));
+assert.ok(!actions().some(child => child.textContent === 'Next page'));
+await click('Use selected');
+assert.equal(node.widgets[0].value, 'Entry 200');
+await openHistory(node, 'subject', 'Subject');
+await click('Next page');
+await click('Previous page');
+assert.ok(!calls.at(-1).path.includes('before='));
+await click('Delete selected');
+const deletion = calls.find(call => call.path.endsWith('/delete'));
+assert.deepEqual(JSON.parse(deletion.options.body), { field: 'subject', value: 'Entry 0' });
+console.log('PASS: history page navigation, selection and deletion');
+
+photoWidget.value = 'photo-1';
+await saveCurrent(node);
+const save = calls.findLast(call => call.path.endsWith('/history') && call.options);
+assert.ok(save);
+assert.ok(!Object.hasOwn(JSON.parse(save.options.body), 'limit'));
+assert.equal(JSON.parse(save.options.body).entries.subject, 'Entry 200');
+console.log('PASS: save payload omits the removed retention limit');

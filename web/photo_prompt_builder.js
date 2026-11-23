@@ -16,7 +16,7 @@ const FIELDS = [
 ];
 const PATH = '/magichanlab_photo_prompt/history';
 const PHOTO_ID_PATH = '/magichanlab_photo_prompt/photo_id';
-const cache = { history: null, photo_ids: {}, images: {} };
+const cache = { photo_ids: {}, images: {} };
 const nodes = new Set();
 const referenceNodes = new Set();
 const PHOTO_ID_RE = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
@@ -153,7 +153,6 @@ async function request(path, body = undefined) {
     error.photoId = result.photo_id;
     throw error;
   }
-  if (result.history) cache.history = result.history;
   if (result.photo_ids) syncPhotoIds(result.photo_ids);
   return result;
 }
@@ -247,11 +246,12 @@ function notify(message) {
   showModal('Photo Prompt Builder', ({ content }) => { content.textContent = message; });
 }
 
-async function openHistory(node, field, label) {
+async function openHistory(node, field, label, before = null, previous = []) {
   try {
-    const { history } = await request(PATH);
-    const list = history[field] || [];
-    showModal(`${label} — History (${list.length})`, ({ content, addButton, close }) => {
+    const query = new URLSearchParams({ field });
+    if (before !== null) query.set('before', String(before));
+    const { items: list, next_cursor: nextCursor } = await request(`${PATH}?${query}`);
+    showModal(`${label} — History (${list.length}${nextCursor !== null ? '+' : ''})`, ({ content, addButton, close }) => {
       const listbox = document.createElement('div');
       listbox.setAttribute('role', 'listbox');
       listbox.setAttribute('aria-label', `${label} history`);
@@ -299,6 +299,14 @@ async function openHistory(node, field, label) {
       }
       content.append(preview);
       choose(selected);
+      if (previous.length) addButton('Previous page', () => {
+        close();
+        void openHistory(node, field, label, previous.at(-1), previous.slice(0, -1));
+      });
+      if (nextCursor !== null) addButton('Next page', () => {
+        close();
+        void openHistory(node, field, label, nextCursor, [...previous, before]);
+      });
       addButton('Use selected', () => {
         const value = getSelected();
         if (value === undefined) return;
@@ -384,13 +392,12 @@ function selectedPhotoId(node) {
 
 async function saveCurrent(node) {
   try {
-    const limit = Number(widget(node, 'history_limit')?.value ?? 100);
     const photoId = String(widget(node, 'photo_id')?.value ?? '');
     if (photoId && !PHOTO_ID_RE.test(photoId)) {
       throw new Error('Photo ID must be 1–24 characters: A–Z, a–z, 0–9, or !#$%*+-./:;=?@_~');
     }
     const payload = {
-      entries: getValues(node), enabled: getEnabled(node), photo_id: photoId, limit,
+      entries: getValues(node), enabled: getEnabled(node), photo_id: photoId,
     };
     let result;
     try {
@@ -675,7 +682,7 @@ app.registerExtension({
           markReferenceSelection(this);
           return configured;
         };
-        void request(PATH).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
+        void request(`${PATH}?include_history=0`).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
         return result;
       };
       return;
@@ -697,13 +704,21 @@ app.registerExtension({
       const oldConfigure = this.onConfigure;
       this.onConfigure = function (...configureArgs) {
         const configured = oldConfigure?.apply(this, configureArgs);
+        // Older workflows serialize history_limit just before photo_id.
+        const values = configureArgs[0]?.widgets_values;
+        const oldLimitIndex = FIELDS.length * 2 + 1;
+        if (Array.isArray(values) && typeof values[oldLimitIndex] === 'number') {
+          const photoWidget = widget(this, 'photo_id');
+          if (photoWidget) photoWidget.value = String(values[oldLimitIndex + 1] ?? '');
+          values.splice(oldLimitIndex, 1);
+        }
         if (this.photoControls) {
           this.photoControls.input.value = String(widget(this, 'photo_id')?.value ?? '');
         }
         fitNodeToWidgets(this);
         return configured;
       };
-      void request(PATH).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
+      void request(`${PATH}?include_history=0`).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
       fitNodeToWidgets(this);
       return result;
     };

@@ -1,6 +1,11 @@
 import copy
 import importlib.util
 import json
+import sqlite3
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +27,8 @@ class TestHistory(unittest.TestCase):
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
+        self.original_db = self.h.DB_FILE
+        self.h.DB_FILE = Path(self.temp.name) / 'history.sqlite3'
         self.original = self.h.FILE
         self.original_template = self.h.TEMPLATE_FILE
         self.h.FILE = Path(self.temp.name) / 'history.json'
@@ -30,6 +37,7 @@ class TestHistory(unittest.TestCase):
         self.h.TEMPLATE_FILE.write_text(template.read_text(encoding='utf-8'), encoding='utf-8')
 
     def tearDown(self):
+        self.h.DB_FILE = self.original_db
         self.h.FILE = self.original
         self.h.TEMPLATE_FILE = self.original_template
         self.temp.cleanup()
@@ -39,16 +47,17 @@ class TestHistory(unittest.TestCase):
             '{"version": 2, "history": {"subject": [{"text": "Default", "photo_ids": []}]}}',
             encoding='utf-8')
         self.assertEqual(self.h.read_history()['subject'], ['Default'])
+        self.assertTrue(self.h.DB_FILE.exists())
         self.assertFalse(self.h.FILE.exists())
         self.h.add_entries({'subject': 'Saved'})
         self.assertEqual(self.h.read_history()['subject'], ['Saved', 'Default'])
         self.h.TEMPLATE_FILE.write_text('{"version": 2, "history": {}}', encoding='utf-8')
         self.assertEqual(self.h.read_history()['subject'], ['Saved', 'Default'])
 
-    def test_add_deduplicate_limit_delete(self):
-        self.h.add_entries({'subject': 'A', 'appearance': 'White shirt'}, limit=2)
-        self.h.add_entries({'subject': 'B'}, limit=2)
-        self.h.add_entries({'subject': 'A'}, limit=2)
+    def test_add_deduplicate_delete(self):
+        self.h.add_entries({'subject': 'A', 'appearance': 'White shirt'})
+        self.h.add_entries({'subject': 'B'})
+        self.h.add_entries({'subject': 'A'})
         self.assertEqual(self.h.read_history()['subject'], ['A', 'B'])
         self.assertEqual(self.h.read_history()['appearance'], ['White shirt'])
         self.h.delete_entry('subject', 'A')
@@ -58,11 +67,9 @@ class TestHistory(unittest.TestCase):
 
     def test_invalid_and_unicode(self):
         self.h.add_entries({'environment': '東京・夕暮れ'})
-        self.assertIn('東京・夕暮れ', self.h.FILE.read_text(encoding='utf-8'))
+        self.assertEqual(self.h.read_history()['environment'], ['東京・夕暮れ'])
         with self.assertRaises(ValueError):
             self.h.add_entries({'unknown': 'x'})
-        with self.assertRaises(ValueError):
-            self.h.add_entries({'subject': 'x'}, limit=0)
 
     def test_blank_ignored(self):
         self.h.add_entries({'subject': '  '})
@@ -94,7 +101,7 @@ class TestHistory(unittest.TestCase):
         self.assertEqual(self.h.read_photo_ids()['A-1'], {'subject': 'A'})
         self.assertEqual(self.h.read_photo_ids()['B-2'],
                          {'subject': 'A', 'lighting': 'hard'})
-        saved = self.h.FILE.read_text(encoding='utf-8')
+        saved = json.dumps(self.h.export_data())
         self.assertIn('"photo_ids": [', saved)
         self.assertIn('"A-1"', saved)
         self.assertIn('"B-2"', saved)
@@ -155,15 +162,15 @@ class TestHistory(unittest.TestCase):
         result = self.h.delete_photo_id('delete-me')
         self.assertEqual(result['history'], original_history)
         self.assertEqual(result['photo_ids'], {'keep-me': {'subject': 'A'}})
-        self.assertNotIn('delete-me', self.h.FILE.read_text(encoding='utf-8'))
+        self.assertNotIn('delete-me', json.dumps(self.h.export_data()))
         with self.assertRaises(ValueError):
             self.h.delete_photo_id('delete-me')
 
-    def test_tagged_entries_survive_history_limit(self):
+    def test_all_entries_are_retained(self):
         self.h.add_entries({'subject': 'Pinned'}, photo_id='pin')
-        self.h.add_entries({'subject': 'One'}, limit=1)
-        self.h.add_entries({'subject': 'Two'}, limit=1)
-        self.assertEqual(self.h.read_history()['subject'], ['Two', 'Pinned'])
+        self.h.add_entries({'subject': 'One'})
+        self.h.add_entries({'subject': 'Two'})
+        self.assertEqual(self.h.read_history()['subject'], ['Two', 'One', 'Pinned'])
         self.assertEqual(self.h.read_photo_ids()['pin'], {'subject': 'Pinned'})
 
     def test_auto_id_and_validation(self):
@@ -194,7 +201,7 @@ class TestHistory(unittest.TestCase):
 
     def test_invalid_import_does_not_replace_existing_history(self):
         self.h.add_entries({'subject': 'Keep'}, photo_id='keep')
-        before = self.h.FILE.read_bytes()
+        before = self.h.export_data()
         good = self.h.export_data()
         bad_cases = [
             None,
@@ -215,7 +222,119 @@ class TestHistory(unittest.TestCase):
         for bad in bad_cases:
             with self.subTest(data=bad), self.assertRaises(ValueError):
                 self.h.import_data(bad)
-            self.assertEqual(self.h.FILE.read_bytes(), before)
+            self.assertEqual(self.h.export_data(), before)
+
+
+    def test_migration_preserves_v2_order_ids_and_original(self):
+        data = self.h._empty()
+        data['history']['subject'] = [
+            {'text': '東京', 'photo_ids': ['z-last', 'a-first']},
+            {'text': 'Older', 'photo_ids': ['old']},
+        ]
+        data['history']['lighting'] = [{'text': '東京', 'photo_ids': ['z-last']}]
+        source = json.dumps(data, ensure_ascii=False)
+        self.h.FILE.write_text(source, encoding='utf-8')
+        self.assertEqual(self.h.export_data(), data)
+        self.assertEqual(self.h.FILE.read_text(encoding='utf-8'), source)
+        self.h.add_entries({'subject': 'New'}, return_state=False)
+        self.h.FILE.write_text('invalid now; must not be reimported', encoding='utf-8')
+        self.assertEqual(self.h.read_history()['subject'], ['New', '東京', 'Older'])
+        with sqlite3.connect(self.h.DB_FILE) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM texts WHERE text = ?', ('東京',)).fetchone()[0], 1)
+            self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(), [])
+
+    def test_failed_migration_is_rolled_back_and_can_be_retried(self):
+        source = '{bad JSON'
+        self.h.FILE.write_text(source, encoding='utf-8')
+        with self.assertRaises(RuntimeError):
+            self.h.migrate()
+        self.assertEqual(self.h.FILE.read_text(encoding='utf-8'), source)
+        with sqlite3.connect(self.h.DB_FILE) as conn:
+            self.assertEqual(conn.execute('PRAGMA user_version').fetchone()[0], 0)
+            self.assertEqual(conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall(), [])
+        self.h.FILE.write_text('{"version": 1, "history": {"subject": ["Recovered"]}}', encoding='utf-8')
+        self.assertEqual(self.h.read_history()['subject'], ['Recovered'])
+
+    def test_migration_rejects_invalid_associations_without_losing_source(self):
+        data = self.h._empty()
+        data['history']['subject'] = [{'text': 'A', 'photo_ids': ['same']},
+                                      {'text': 'B', 'photo_ids': ['same']}]
+        source = json.dumps(data)
+        self.h.FILE.write_text(source, encoding='utf-8')
+        with self.assertRaises(ValueError):
+            self.h.migrate()
+        self.assertEqual(self.h.FILE.read_text(encoding='utf-8'), source)
+
+    def test_cli_migration_is_idempotent(self):
+        self.h.FILE.write_text('{"version": 1, "history": {"subject": ["Imported"]}}', encoding='utf-8')
+        command = [sys.executable, str(ROOT / 'migrate_history.py'), '--source', str(self.h.FILE),
+                   '--database', str(self.h.DB_FILE)]
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.h.add_entries({'subject': 'Keep'}, return_state=False)
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.h.read_history()['subject'], ['Keep', 'Imported'])
+
+    def test_large_history_pagination_and_indexed_lookup(self):
+        data = self.h._empty()
+        data['history']['subject'] = [
+            {'text': f'Entry {i}', 'photo_ids': [f'photo-{i}'] if i % 10 == 0 else []}
+            for i in range(5000)
+        ]
+        self.h.import_data(data)
+        collected = []
+        cursor = None
+        while True:
+            page = self.h.read_history_page('subject', cursor, page_size=127)
+            self.assertLessEqual(len(page['items']), 127)
+            collected.extend(page['items'])
+            cursor = page['next_cursor']
+            if cursor is None:
+                break
+        self.assertEqual(collected, [f'Entry {i}' for i in range(5000)])
+        self.assertEqual(self.h.read_photo_id('photo-4990'), {'subject': 'Entry 4990'})
+        self.assertIsNone(self.h.read_photo_id('missing'))
+        self.assertEqual(len(self.h.list_photo_ids()), 500)
+        with sqlite3.connect(self.h.DB_FILE) as conn:
+            plan = str(conn.execute('EXPLAIN QUERY PLAN SELECT t.text, h.position FROM history h '
+                'JOIN texts t ON t.id = h.text_id WHERE h.field = ? AND h.position < ? '
+                'ORDER BY h.position DESC, h.text_id LIMIT ?', ('subject', 2500, 101)).fetchall())
+            self.assertIn('history_recent', plan)
+            self.assertNotIn('TEMP B-TREE', plan)
+        with patch.object(self.h, '_state', side_effect=AssertionError('Autosave loaded full state')):
+            self.h.add_entries({'subject': 'Autosaved'}, return_state=False)
+        self.assertEqual(len(self.h.read_history()['subject']), 5001)
+
+    def test_cascade_and_shared_text_cleanup(self):
+        self.h.add_entries({'subject': 'Shared', 'pose': 'Shared'}, photo_id='one')
+        self.h.delete_entry('subject', 'Shared')
+        self.assertEqual(self.h.read_photo_id('one'), {'pose': 'Shared'})
+        with sqlite3.connect(self.h.DB_FILE) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM texts').fetchone()[0], 1)
+        self.h.clear_field('pose')
+        with sqlite3.connect(self.h.DB_FILE) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM texts').fetchone()[0], 0)
+            self.assertEqual(conn.execute('SELECT count(*) FROM photo_fields').fetchone()[0], 0)
+            self.assertEqual(conn.execute('PRAGMA foreign_key_check').fetchall(), [])
+
+    def test_concurrent_writes_do_not_lose_entries(self):
+        def save(i):
+            self.h.add_entries({'subject': f'Entry {i}'}, photo_id=f'id-{i}', return_state=False)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(save, range(40)))
+        self.assertEqual(set(self.h.read_history()['subject']), {f'Entry {i}' for i in range(40)})
+        self.assertEqual(len(self.h.read_photo_ids()), 40)
+        with sqlite3.connect(self.h.DB_FILE) as conn:
+            self.assertEqual(conn.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
+
+    def test_import_failure_rolls_back_entire_database(self):
+        self.h.add_entries({'subject': 'Keep'}, photo_id='keep')
+        before = self.h.export_data()
+        with patch.object(self.h, '_insert_backup', side_effect=RuntimeError('Interrupted')):
+            with self.assertRaises(RuntimeError):
+                self.h.import_data(self.h._empty())
+        self.assertEqual(self.h.export_data(), before)
 
 
 class TestCompose(unittest.TestCase):
@@ -253,6 +372,7 @@ class TestCompose(unittest.TestCase):
         self.assertEqual(split, 'Clothing:\nWhite shirt\n\nHair & Makeup:\nShort hair'
                          '\n\nPosing:\nStanding\n\nExpression:\nSmiling')
         inputs = mod.Krea2PhotoPromptBuilder.INPUT_TYPES()['required']
+        self.assertNotIn('history_limit', inputs)
         for field in ('appearance', 'hair_makeup', 'pose', 'expression'):
             self.assertIn(field, inputs)
             self.assertIn(f'use_{field}', inputs)
@@ -263,6 +383,7 @@ class TestCompose(unittest.TestCase):
         from unittest.mock import patch
         history = load('history_for_reference', 'history.py')
         with tempfile.TemporaryDirectory() as directory:
+            history.DB_FILE = Path(directory) / 'history.sqlite3'
             history.FILE = Path(directory) / 'history.json'
             history.add_entries({'subject': ' A woman ', 'lighting': 'Soft light',
                                  'pose': 'Unused'}, photo_id='photo-1',
@@ -278,10 +399,10 @@ class TestCompose(unittest.TestCase):
             self.assertEqual(set(reference.INPUT_TYPES()['required']), {'photo_id'})
             self.assertEqual(reference.INPUT_TYPES()['required']['photo_id'][0],
                              [mod.SELECT_PHOTO_ID, 'photo-1'])
-            before = history.FILE.read_bytes()
+            before = history.export_data()
             self.assertEqual(reference.build('photo-1'),
                              ('Subject:\nA woman\n\nLighting:\nSoft light',))
-            self.assertEqual(history.FILE.read_bytes(), before)
+            self.assertEqual(history.export_data(), before)
             self.assertEqual(set(reference.INPUT_TYPES()['optional']),
                              {'additional_tag', 'additional_prompt'})
             for field, label in mod.HEADINGS.items():
@@ -296,7 +417,7 @@ class TestCompose(unittest.TestCase):
                              reference.build('photo-1'))
             self.assertEqual(reference.build('photo-1'),
                              ('Subject:\nA woman\n\nLighting:\nSoft light',))
-            self.assertEqual(history.FILE.read_bytes(), before)
+            self.assertEqual(history.export_data(), before)
             self.assertEqual(reference.IS_CHANGED('photo-1', 'Subject', 'trigger'),
                              reference.IS_CHANGED('photo-1'))
             with self.assertRaisesRegex(ValueError, 'Unknown additional prompt tag'):

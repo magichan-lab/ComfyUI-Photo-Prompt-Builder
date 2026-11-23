@@ -1,7 +1,7 @@
 """ComfyUI nodes for editing and reading photographic prompts."""
 import json
 
-from .history import FIELDS, add_entries, read_photo_ids
+from .history import FIELDS, add_entries, list_photo_ids, read_photo_id
 
 HEADINGS = {
     'subject': 'Subject',
@@ -31,7 +31,7 @@ class Krea2PhotoPromptBuilder:
     RETURN_TYPES = ('STRING',)
     RETURN_NAMES = ('prompt',)
     OUTPUT_NODE = False
-    DESCRIPTION = 'Nine-section photographic prompt builder with reusable local JSON history.'
+    DESCRIPTION = 'Nine-section photographic prompt builder with reusable local SQLite history.'
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -40,7 +40,6 @@ class Krea2PhotoPromptBuilder:
             required[key] = ('STRING', {'default': '', 'multiline': True, 'dynamicPrompts': False})
             required[f'use_{key}'] = ('BOOLEAN', {'default': True, 'label_on': 'Include', 'label_off': 'Exclude'})
         required['auto_save_history'] = ('BOOLEAN', {'default': True, 'label_on': 'On', 'label_off': 'Off'})
-        required['history_limit'] = ('INT', {'default': 100, 'min': 1, 'max': 1000, 'step': 1})
         required['photo_id'] = ('STRING', {'default': '', 'multiline': False})
         return {'required': required}
 
@@ -50,7 +49,7 @@ class Krea2PhotoPromptBuilder:
         prompt = compose_prompt(values, enabled)
         if kwargs.get('auto_save_history', True):
             try:
-                add_entries(values, limit=kwargs.get('history_limit', 100))
+                add_entries(values, return_state=False)
             except (OSError, ValueError, RuntimeError) as e:
                 print(f'[Krea2 Photo Prompt Builder] Cannot save history: {e}')
         return (prompt,)
@@ -70,7 +69,7 @@ class Krea2PhotoPromptReference:
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {'required': {'photo_id': ([SELECT_PHOTO_ID, *sorted(read_photo_ids())],
+        return {'required': {'photo_id': ([SELECT_PHOTO_ID, *list_photo_ids()],
                                           {'default': SELECT_PHOTO_ID})},
                 'optional': {
                     'additional_tag': (list(HEADINGS.values()), {'default': 'Subject'}),
@@ -81,12 +80,12 @@ class Krea2PhotoPromptReference:
     @classmethod
     def IS_CHANGED(cls, photo_id, additional_tag='Subject', additional_prompt=''):
         # Invalidate ComfyUI's execution cache when a saved combination changes.
-        return json.dumps(read_photo_ids().get(photo_id), ensure_ascii=False, sort_keys=True)
+        return json.dumps(read_photo_id(photo_id), ensure_ascii=False, sort_keys=True)
 
     def build(self, photo_id, additional_tag='Subject', additional_prompt=''):
         if not photo_id or photo_id == SELECT_PHOTO_ID:
             raise ValueError('Select a Photo ID before running the reference node.')
-        values = read_photo_ids().get(photo_id)
+        values = read_photo_id(photo_id)
         if values is None:
             raise ValueError(f'Photo ID "{photo_id}" does not exist in saved history.')
         if additional_prompt.strip():

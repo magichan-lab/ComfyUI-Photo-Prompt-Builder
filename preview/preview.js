@@ -30,7 +30,19 @@ const api = {
   async fetchApi(path, options) {
     const history = readHistory();
     const photoIds = readIds();
-    if (!options) return reply(history, photoIds);
+    if (!options) {
+      const query = new URL(path, location.href).searchParams;
+      const field = query.get('field');
+      if (field) {
+        const start = Number(query.get('before') || 0);
+        const items = history[field].slice(start, start + 100);
+        const next = start + items.length;
+        return { ok: true, json: async () => ({
+          items, next_cursor: next < history[field].length ? next : null,
+        }) };
+      }
+      return reply(history, photoIds);
+    }
     const body = JSON.parse(options.body);
     if (path.endsWith('/photo_id/rename')) {
       if (!photoIdPattern.test(body.new_id) || !Object.hasOwn(photoIds, body.old_id) ||
@@ -75,13 +87,6 @@ const api = {
         if (value) history[key] = [value, ...history[key].filter(item => item !== value)];
         if (value && savedPhotoId && body.enabled?.[key] !== false) photoIds[savedPhotoId][key] = value;
       }
-      for (const [key] of fields) {
-        let untagged = 0;
-        history[key] = history[key].filter(value => {
-          if (Object.values(photoIds).some(values => values[key] === value)) return true;
-          return ++untagged <= body.limit;
-        });
-      }
       return reply(history, photoIds, savedPhotoId);
     }
     for (const [id, values] of Object.entries(photoIds)) if (!Object.keys(values).length) delete photoIds[id];
@@ -105,7 +110,6 @@ class PreviewNode {
       });
       this.widgets.push(widget, { name: `use_${key}`, value: true });
     }
-    this.widgets.push({ name: 'history_limit', value: 100 });
     this.widgets.push({ name: 'photo_id', value: '' });
   }
   addWidget(type, name, value, callback, options = {}) {

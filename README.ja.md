@@ -1,6 +1,6 @@
 # Krea2 Photo Prompt Builder for ComfyUI
 
-写真用プロンプトをラベル付きの9項目で組み立て、項目ごとの入力履歴をローカルのJSONファイルに保存するComfyUIカスタムノードです。保存済みPhoto IDを読み込むだけの参照ノードも含みます。
+写真用プロンプトをラベル付きの9項目で組み立て、項目ごとの入力履歴をローカルのSQLiteデータベースに保存するComfyUIカスタムノードです。保存済みPhoto IDを読み込むだけの参照ノードも含みます。
 
 ## インストール
 
@@ -23,7 +23,7 @@ ComfyUIに含まれる`aiohttp`以外に、pipでインストールする依存�
 2. `pyproject.toml`のバージョンとメタデータを確認してください。公開済みのバージョンは変更できないため、次回以降の公開では`version`を更新します。
 3. [Comfy CLI](https://docs.comfy.org/comfy-cli/getting-started)をインストールし、リポジトリのルートで`comfy node publish`を実行してください。Registry公開用APIキーの入力を求められます。キーをリポジトリに保存しないでください。
 
-`.comfyignore`はローカルのプロンプト履歴、テスト、プレビュー、Pythonバイトコードを公開アーカイブから除外します。初回保存前に読み込む`data/prompt_history_template.json`は公開アーカイブに含めます。アカウントとキーの作成方法は[公式の公開手順](https://docs.comfy.org/registry/publishing)を参照してください。
+`.comfyignore`はローカルのプロンプト履歴、テスト、プレビュー、Pythonバイトコードを公開アーカイブから除外します。旧JSONがない場合に初期データとして読み込む`data/prompt_history_template.json`は公開アーカイブに含めます。アカウントとキーの作成方法は[公式の公開手順](https://docs.comfy.org/registry/publishing)を参照してください。
 
 ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`と`MagichanLab_Krea2PhotoPromptReference`です。旧IDの`Krea2PhotoPromptBuilder`で保存したワークフローをこのバージョンで読み込むには、ワークフロー内のノードタイプを`MagichanLab_Krea2PhotoPromptBuilder`に変更する必要があります。画面上のビルダーノード名は引き続き**Krea2 Photo Prompt Builder**です。
 
@@ -47,7 +47,7 @@ ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`と`Magich
 - `lighting`：光源、光の方向、コントラスト、色温度
 - `finishing`：質感、カラーグレーディング、雰囲気、写真のスタイル
 
-各項目には`use_...`切り替えがあります。オフにした項目もワークフローと履歴には残りますが、出力からは除外されます。空欄の項目も出力されません。`auto_save_history`は、このノードの**実行時**に空でない入力を履歴に保存するかを制御します。`history_limit`の初期値は各項目100件です。
+各項目には`use_...`切り替えがあります。オフにした項目もワークフローと履歴には残りますが、出力からは除外されます。空欄の項目も出力されません。`auto_save_history`は、このノードの**実行時**に空でない入力を履歴に保存するかを制御します。履歴の保存件数に上限はありません。
 
 既存ワークフローとの互換性のため、`appearance`と`pose`の入力キーは維持しています。以前の入力や履歴に髪型・メーク、表情が含まれる場合は、必要に応じて新しい項目へ移してください。
 
@@ -72,7 +72,7 @@ Medium shot, eye-level, 50mm lens
 ## 履歴UI
 
 - 通常の複数行テキスト欄で直接編集できます。
-- 各入力欄の右側にある「履歴」ボタンをクリックするとダイアログが開き、リストから履歴を選択できます。選択した値の全文確認、適用、個別の削除、項目ごとの履歴の全削除ができます。
+- 各入力欄の右側にある「履歴」ボタンをクリックするとダイアログが開き、リストから履歴を選択できます。100件ずつ読み込み、`Previous page` / `Next page`で前後のページへ移動できます。選択した値の全文確認、適用、個別の削除、項目ごとの履歴の全削除ができます。
 - ノード下部の1行目にはPhoto ID検索欄、`Select Photo ID`、`Rename`、`Delete`、2行目には保存用Photo ID入力、`Save`、`Preview`を配置しています。
 - `Save`をクリックすると、`auto_save_history`がオフでも現在の値をすぐに保存できます。
 - 手動保存時は現在の有効な非空欄に共通のPhoto IDを付けます。`photo_id`入力が空欄なら保存時刻の`yymmddHHMMSS`、入力があればその値を使います。使用できる文字は英数字と`!#$%*+-./:;=?@_~`で、最大24文字です。
@@ -84,12 +84,28 @@ Medium shot, eye-level, 50mm lens
 - `Delete`は選択したPhoto IDだけを全項目から削除します。文字列履歴と現在ノードに表示中の各項目の文字列は残り、選択欄は未選択になります。
 - `Preview`をクリックすると、サンプラーを実行せずに生成されるプロンプトを確認・コピーできます。
 - 重複する値は取り除かれ、最後に保存した値が先頭に表示されます。履歴は9項目それぞれ独立しています。
-- Photo IDのある文字列は`history_limit`を超えても保持されます。履歴から文字列を削除・全削除すると、関連するPhoto IDからもその項目が外れます。
+- 履歴は削除するまで件数に関係なく保持されます。履歴から文字列を削除・全削除すると、関連するPhoto IDからもその項目が外れます。
 - **履歴は同じComfyUI環境にあるすべてのビルダーノードで共有されます。** 現在の入力値と切り替え状態は、各ComfyUIワークフローにも保存されます。
 
 ## 保存場所とバックアップ
 
-履歴は`ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.json`に保存されます。人が読めるUTF-8形式で、ファイルの置き換えはアトミックに行われ、Git管理から除外されます。ファイルがない場合は、履歴を保存するまでGit管理下の`data/prompt_history_template.json`を参照します。カスタムノードを再インストールする前には履歴をバックアップしてください。
+履歴は`ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.sqlite3`に保存されます。Python標準のSQLiteを使用するため、依存パッケージの追加は不要です。本文・項目・項目別履歴・Photo IDの対応を別テーブルに正規化し、一意制約と外部キーで重複や関連付けの不整合を防ぎます。履歴の新着順取得、本文検索、Photo ID検索にインデックスを使用します。履歴画面はカーソル方式で100件ずつ読み込み、自動保存は対象レコードのみを書き込みます。参照ノードも選択したIDの組み合わせだけを読み込みます。APIのDB処理はComfyUIのイベントループ外で実行します。Photo ID選択欄は引き続き全組み合わせを取得するため、Photo IDが非常に多い場合は初期読み込みに時間がかかる可能性があります。
+
+DBと`-wal` / `-shm`ファイルはGit管理・公開アーカイブから除外します。ComfyUI実行中のバックアップには、下記のJSON Exportを使用してください。ファイルを直接コピーする場合は、ComfyUIとほかのDB利用プロセスを停止してから`data`ディレクトリをコピーしてください。再インストール前にもバックアップしてください。
+
+### 既存JSONからの自動移行
+
+初回のDBアクセス時に`data/prompt_history.json`があれば、トランザクション内で自動移行します。文字列配列のバージョン1とPhoto ID付きのバージョン2に対応し、表示順と関連付けを引き継ぎます。元のJSONは変更せずに残します。移行後はSQLiteを使用し、履歴を全削除してもJSONを再移行しません。旧JSONがなければ`data/prompt_history_template.json`を初期データにします。不正なJSONの場合は移行を中断し、不完全なDBを確定しません。元データを修正して再実行できます。
+
+ComfyUIの起動前に手動で移行する場合は、リポジトリのルートで以下を実行します。
+
+```sh
+python migrate_history.py
+# パスを明示する場合：
+python migrate_history.py --source /path/to/prompt_history.json --database /path/to/prompt_history.sqlite3
+```
+
+繰り返し実行しても初期化済みDBは上書きしません。パス指定はスクリプトの実行時だけに適用され、ノードは常に`data/prompt_history.sqlite3`を使用します。`history_limit`欄は廃止し、件数超過による自動削除も行いません。更新前のビルダーワークフローを開いた場合もPhoto IDを引き継ぎます。
 
 ### JSON の Export / Import（GUI不要）
 
@@ -102,9 +118,9 @@ curl -fS -X POST -H 'Content-Type: application/json' --data-binary @photo-prompt
 
 **Importは現在の共有履歴を丸ごと置き換えます。** 実行前にExportでバックアップしてください。Importが受け付けるのは、このノードのバージョン2の履歴JSON形式です。不正な形式はエラーになり、既存の履歴は変更されません。Import後はComfyUIのブラウザー画面を更新し、Photo IDの一覧を読み直してください。別のポートでComfyUIを起動している場合はURLの`8188`を変更してください。
 
-旧バージョンからの初回更新では、これまでGit管理されていた`prompt_history.json`をリポジトリ外にコピーしてから、`git restore data/prompt_history.json`、`git pull`の順に実行し、バックアップを`data/prompt_history.json`へ戻してください。以後の更新は通常どおり`git pull`できます。
+旧バージョンからの初回更新では、これまでGit管理されていた`prompt_history.json`をリポジトリ外にコピーしてから、`git restore data/prompt_history.json`、`git pull`の順に実行し、SQLiteへの初回アクセス前にバックアップを`data/prompt_history.json`へ戻してください。以後の更新は通常どおり`git pull`できます。
 
-**Google Colab**：Colabの一時的な実行環境では、ランタイムをリセットするとローカルの履歴が削除されます。履歴を残すには、`data`ディレクトリをGoogle Drive上の永続ストレージにバックアップするか、シンボリックリンクを作成してください。このプロジェクトはDriveを自動でマウントしません。
+**Google Colab**：Colabの一時的な実行環境では、ランタイムをリセットするとローカルの履歴が削除されます。履歴を残すには、JSON ExportをGoogle Drive上の永続ストレージに保存し、リセット後にImportしてください。稼働中のSQLiteはローカルのランタイム領域に置いてください。Driveのマウント先ではSQLiteに必要なファイルロックが保証されない場合があります。このプロジェクトはDriveを自動でマウントしません。
 
 ## 注意事項と制限
 
@@ -117,7 +133,7 @@ curl -fS -X POST -H 'Content-Type: application/json' --data-binary @photo-prompt
 
 ## テスト
 
-プロジェクトの親ディレクトリから`python -m unittest discover -s comfyui-photo-prompt-builder/tests -v`を実行します。
+リポジトリのルートから`python -m unittest discover -s tests -v`を実行します。フロントエンドのアダプター検証は`node tests/test_frontend.mjs`で実行できます。
 
 ## ComfyUIなしでUIを確認する
 

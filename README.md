@@ -2,7 +2,7 @@
 
 [日本語版 README](README.ja.md)
 
-ComfyUI nodes for building labeled, nine-section photography prompts with local JSON history and reading saved Photo ID combinations.
+ComfyUI nodes for building labeled, nine-section photography prompts with local SQLite history and reading saved Photo ID combinations.
 
 ## Installation
 
@@ -25,7 +25,7 @@ The repository includes `pyproject.toml` metadata and a `.comfyignore` release f
 2. Review the version and metadata in `pyproject.toml`. Increment `version` for each later release; a published version cannot be changed.
 3. Install [Comfy CLI](https://docs.comfy.org/comfy-cli/getting-started), then run `comfy node publish` from the repository root. The CLI asks for a Registry publishing API key. Do not commit the key.
 
-The `.comfyignore` file excludes the local prompt history, test files, preview, and Python bytecode from the Registry archive. Keep `data/prompt_history_template.json` in the package because the node reads it before the first save. See the [official publishing guide](https://docs.comfy.org/registry/publishing) for account and key setup.
+The `.comfyignore` file excludes the local prompt history, test files, preview, and Python bytecode from the Registry archive. Keep `data/prompt_history_template.json` in the package because it seeds new databases when no legacy JSON exists. See the [official publishing guide](https://docs.comfy.org/registry/publishing) for account and key setup.
 
 The internal ComfyUI node IDs are `MagichanLab_Krea2PhotoPromptBuilder` and `MagichanLab_Krea2PhotoPromptReference`. Workflows saved with the earlier builder ID `Krea2PhotoPromptBuilder` need their node type changed to `MagichanLab_Krea2PhotoPromptBuilder` before loading this version. The displayed builder name remains **Krea2 Photo Prompt Builder**.
 
@@ -49,7 +49,7 @@ The following inputs belong to **Krea2 Photo Prompt Builder**.
 - `lighting`: light source, direction, contrast, color temperature
 - `finishing`: texture, color grade, mood, photo style
 
-Each has a `use_...` toggle. Disabled sections are retained in the workflow and history, but excluded from output. Blank sections are omitted. The `auto_save_history` toggle controls saving nonempty values **when this node executes**; `history_limit` defaults to 100 per field.
+Each has a `use_...` toggle. Disabled sections are retained in the workflow and history, but excluded from output. Blank sections are omitted. The `auto_save_history` toggle controls saving nonempty values **when this node executes**. History has no retention limit.
 
 The `appearance` and `pose` input keys remain unchanged for existing workflows. If older inputs or history entries contain hair, makeup, or expression details, move those details into the new fields as needed.
 
@@ -74,7 +74,7 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 ## History UI
 
 - Use the native multiline text fields for direct editing.
-- Click the `履歴` button to the right of an input field to open a dialog with a selectable history list. Inspect the full text, apply a value, delete one value, or clear that section's history.
+- Click the `履歴` button to the right of an input field to open a dialog with a selectable history list. Use Previous page / Next page to browse 100 entries at a time. Inspect the full text, apply a value, delete one value, or clear that section's history.
 - The node's lower controls use two rows: Photo ID search / `Select Photo ID` / `Rename` / `Delete`, then the Photo ID input for saving / `Save` / `Preview`.
 - Click `Save` to save immediately (even when `auto_save_history` is off).
 - Manual save assigns one Photo ID to all enabled, nonempty fields. Leave the `photo_id` input blank to use the save time in `yymmddHHMMSS` format, or enter up to 24 letters, digits, and `!#$%*+-./:;=?@_~` characters.
@@ -86,12 +86,28 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 - `Delete` removes the selected ID from all fields while keeping the history strings and current text fields. The selector returns to its unselected state.
 - Click `Preview` to inspect/copy the generated prompt without running the sampler.
 - Duplicate values are removed, and the most recently saved entry appears first. Histories are independent for all nine categories.
-- Tagged strings survive `history_limit`. Deleting or clearing history removes the affected fields from their Photo IDs.
+- All strings are retained until deleted. Deleting or clearing history removes the affected fields from their Photo IDs.
 - **History is shared by all builder nodes in the same ComfyUI installation.** Current values/toggles are also saved in each ComfyUI workflow.
 
 ## Storage and backup
 
-The history lives at `ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.json`. It is human-readable UTF-8, written using atomic replacement, and excluded from Git. If the file is missing, the node reads the tracked `data/prompt_history_template.json` until history is saved. Back up `prompt_history.json` before reinstalling the custom node.
+The history lives at `ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.sqlite3`, using Python's built-in SQLite support with no additional dependencies. Texts, fields, field history, and Photo ID assignments are normalized into separate tables. Unique keys prevent duplicates; foreign keys keep assignments consistent. Indexes support recent-history pages, text lookup, and Photo ID lookup. History dialogs load 100 entries per page using a cursor rather than loading all history. Autosave writes only the affected rows, and the reference node reads only the selected combination. API database operations run outside ComfyUI's event loop. Photo ID selectors still load all saved combinations, so very large Photo ID collections can increase their initial load time.
+
+The database and its `-wal` / `-shm` sidecars are excluded from Git and release archives. Use JSON export below for a consistent backup while ComfyUI is running. For a file backup, stop ComfyUI and other database users before copying the `data` directory. Back up before reinstalling the custom node.
+
+### Automatic migration from JSON
+
+On first database access, existing `data/prompt_history.json` is automatically imported in one transaction. Version 1 string histories and version 2 histories with Photo ID assignments are supported; history order and associations are preserved. The source JSON is retained unchanged. Once initialized, SQLite is authoritative and the JSON is never reimported, including after history is cleared. Without legacy JSON, `data/prompt_history_template.json` seeds the database. Invalid JSON fails migration without committing a partial database; correct the source and retry.
+
+To migrate before starting ComfyUI, run from this repository's root:
+
+```sh
+python migrate_history.py
+# Optional explicit paths:
+python migrate_history.py --source /path/to/prompt_history.json --database /path/to/prompt_history.sqlite3
+```
+
+The script preserves initialized databases on repeat runs. Custom paths apply to that script invocation only; the node always uses `data/prompt_history.sqlite3`. The removed `history_limit` setting no longer truncates history. Existing builder workflows restore their Photo ID when loaded after the update.
 
 ### JSON export and import without the GUI
 
@@ -104,9 +120,9 @@ curl -fS -X POST -H 'Content-Type: application/json' --data-binary @photo-prompt
 
 **Import replaces the entire shared history.** Export a backup before importing. The endpoint accepts this node's version 2 history JSON format. Invalid data is rejected without changing the existing history. Refresh the ComfyUI browser page after import to reload the Photo ID list. Replace port `8188` if your ComfyUI server uses another port.
 
-For the first update from an older checkout that still tracks `prompt_history.json`, copy it outside the repository, run `git restore data/prompt_history.json` and `git pull`, then copy the backup back to `data/prompt_history.json`. Later updates can use `git pull` directly.
+For the first update from an older checkout that still tracks `prompt_history.json`, copy it outside the repository, run `git restore data/prompt_history.json` and `git pull`, then copy the backup back to `data/prompt_history.json` before the first SQLite access. Later updates can use `git pull` directly.
 
-**Google Colab**: Colab's ephemeral runtime deletes the local history when the runtime is reset. To retain it, back up or symlink the `data` directory to persistent Google Drive storage. This project does not automatically mount Drive.
+**Google Colab**: Colab's ephemeral runtime deletes the local history when the runtime is reset. To retain it, export a JSON backup to persistent Google Drive storage and restore it after a reset. Keep the live SQLite database on local runtime storage; mounted Drive may not provide the file locking SQLite needs. This project does not automatically mount Drive.
 
 ## Notes and limitations
 
@@ -119,7 +135,7 @@ For the first update from an older checkout that still tracks `prompt_history.js
 
 ## Tests
 
-From the project parent directory: `python -m unittest discover -s comfyui-photo-prompt-builder/tests -v`.
+From this repository's root: `python -m unittest discover -s tests -v`. Frontend adapter checks: `node tests/test_frontend.mjs`.
 
 ## Preview without ComfyUI
 
