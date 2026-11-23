@@ -250,8 +250,20 @@ async function openHistory(node, field, label, before = null, previous = []) {
   try {
     const query = new URLSearchParams({ field });
     if (before !== null) query.set('before', String(before));
-    const { items: list, next_cursor: nextCursor } = await request(`${PATH}?${query}`);
+    const { items: list, has_photo_id: hasPhotoId, next_cursor: nextCursor } = await request(`${PATH}?${query}`);
     showModal(`${label} — History (${list.length}${nextCursor !== null ? '+' : ''})`, ({ content, addButton, close }) => {
+      const colors = { assigned: '#9de0bd', unassigned: '#c0c5ce' };
+      const assigned = list.map((value, i) => hasPhotoId?.[i] ??
+        Object.values(cache.photo_ids).some((values) => values[field] === value));
+      const legend = document.createElement('div');
+      Object.assign(legend.style, { display: 'flex', flexWrap: 'wrap', gap: '16px', marginBottom: '8px', fontSize: '13px' });
+      for (const [text, color] of [['● Photo IDあり / With Photo ID', colors.assigned], ['● Photo IDなし / Without Photo ID', colors.unassigned]]) {
+        const item = document.createElement('span');
+        item.textContent = text;
+        item.style.color = color;
+        legend.append(item);
+      }
+      content.append(legend);
       const listbox = document.createElement('div');
       listbox.setAttribute('role', 'listbox');
       listbox.setAttribute('aria-label', `${label} history`);
@@ -272,7 +284,7 @@ async function openHistory(node, field, label, before = null, previous = []) {
         selected = index;
         rows.forEach((row, i) => {
           row.setAttribute('aria-selected', String(i === selected));
-          row.style.background = i === selected ? '#405775' : 'transparent';
+          row.style.background = i === selected ? '#405775' : assigned[i] ? '#20372d' : '#272a30';
         });
         preview.textContent = getSelected() ?? '';
       };
@@ -281,10 +293,12 @@ async function openHistory(node, field, label, before = null, previous = []) {
         row.type = 'button';
         row.setAttribute('role', 'option');
         row.textContent = value.replace(/\s+/g, ' ').slice(0, 150);
-        row.title = value;
+        row.title = `${assigned[i] ? 'Photo IDあり / With Photo ID' : 'Photo IDなし / Without Photo ID'}\n${value}`;
         Object.assign(row.style, {
           display: 'block', width: '100%', textAlign: 'left', padding: '9px',
-          margin: '0', border: '0', borderRadius: '4px', color: '#fff',
+          margin: '0', border: '0', borderRadius: '4px',
+          borderLeft: `4px solid ${assigned[i] ? colors.assigned : colors.unassigned}`,
+          color: assigned[i] ? colors.assigned : colors.unassigned,
           cursor: 'pointer', overflowWrap: 'anywhere',
         });
         row.addEventListener('click', () => choose(i));

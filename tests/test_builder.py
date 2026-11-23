@@ -288,6 +288,7 @@ class TestHistory(unittest.TestCase):
         while True:
             page = self.h.read_history_page('subject', cursor, page_size=127)
             self.assertLessEqual(len(page['items']), 127)
+            self.assertEqual(page['has_photo_id'], [int(text.split()[1]) % 10 == 0 for text in page['items']])
             collected.extend(page['items'])
             cursor = page['next_cursor']
             if cursor is None:
@@ -305,6 +306,24 @@ class TestHistory(unittest.TestCase):
         with patch.object(self.h, '_state', side_effect=AssertionError('Autosave loaded full state')):
             self.h.add_entries({'subject': 'Autosaved'}, return_state=False)
         self.assertEqual(len(self.h.read_history()['subject']), 5001)
+
+    def test_history_page_photo_id_status_tracks_field_and_deletion(self):
+        data = self.h._empty()
+        data['history']['subject'] = [
+            {'text': 'Assigned', 'photo_ids': ['one', 'two']},
+            {'text': 'Shared', 'photo_ids': []},
+        ]
+        data['history']['pose'] = [{'text': 'Shared', 'photo_ids': ['one']}]
+        self.h.import_data(data)
+        page = self.h.read_history_page('subject')
+        self.assertEqual(page['items'], ['Assigned', 'Shared'])
+        self.assertEqual(page['has_photo_id'], [True, False])
+        self.assertEqual(self.h.read_history_page('pose')['has_photo_id'], [True])
+        self.h.delete_photo_id('one')
+        self.assertEqual(self.h.read_history_page('subject')['has_photo_id'], [True, False])
+        self.assertEqual(self.h.read_history_page('pose')['has_photo_id'], [False])
+        self.h.delete_photo_id('two')
+        self.assertEqual(self.h.read_history_page('subject')['has_photo_id'], [False, False])
 
     def test_cascade_and_shared_text_cleanup(self):
         self.h.add_entries({'subject': 'Shared', 'pose': 'Shared'}, photo_id='one')

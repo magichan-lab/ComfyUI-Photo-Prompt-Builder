@@ -38,7 +38,8 @@ const api = {
         const items = history[field].slice(start, start + 100);
         const next = start + items.length;
         return { ok: true, json: async () => ({
-          items, next_cursor: next < history[field].length ? next : null,
+          items, has_photo_id: items.map(value => Object.values(photoIds).some(values => values[field] === value)),
+          next_cursor: next < history[field].length ? next : null,
         }) };
       }
       return reply(history, photoIds);

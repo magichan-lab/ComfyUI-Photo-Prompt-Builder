@@ -207,7 +207,9 @@ def read_history_page(field, before=None, page_size=100):
     if before is not None and (type(before) is not int or before < 1):
         raise ValueError('before must be a positive integer')
     with _database() as conn:
-        query = ('SELECT t.text, h.position FROM history h JOIN texts t ON t.id = h.text_id '
+        query = ('SELECT t.text, h.position, EXISTS ('
+                 'SELECT 1 FROM photo_fields p WHERE p.field = h.field AND p.text_id = h.text_id'
+                 ') FROM history h JOIN texts t ON t.id = h.text_id '
                  'WHERE h.field = ?')
         args = [field]
         if before is not None:
@@ -218,6 +220,7 @@ def read_history_page(field, before=None, page_size=100):
         rows = conn.execute(query, args).fetchall()
         page = rows[:page_size]
         return {'items': [row[0] for row in page],
+                'has_photo_id': [bool(row[2]) for row in page],
                 'next_cursor': page[-1][1] if len(rows) > page_size else None}
 
 

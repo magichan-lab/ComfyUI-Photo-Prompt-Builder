@@ -37,6 +37,7 @@ const context = vm.createContext({
       const start = Number(query.get('before') || 0);
       return { ok: true, json: async () => ({
         items: entries.slice(start, start + 100),
+        has_photo_id: entries.slice(start, start + 100).map((_, i) => (start + i) % 2 === 0),
         next_cursor: start + 100 < entries.length ? start + 100 : null,
       }) };
     }
@@ -88,6 +89,20 @@ async function click(label) {
   await new Promise(resolve => setImmediate(resolve));
 }
 await openHistory(node, 'subject', 'Subject');
+const historyContent = body.children.at(-1).children[0].children[1];
+assert.ok(historyContent.children[0].children[0].textContent.includes('With Photo ID'));
+const historyRows = historyContent.children[1].children;
+assert.notEqual(historyRows[0].style.color, historyRows[1].style.color);
+assert.ok(historyRows[0].title.startsWith('Photo IDあり'));
+assert.ok(historyRows[1].title.startsWith('Photo IDなし'));
+const assignedColor = historyRows[0].style.color;
+const assignedBorder = historyRows[0].style.borderLeft;
+await historyRows[1].listeners.click();
+assert.equal(historyRows[0].style.color, assignedColor);
+assert.equal(historyRows[0].style.borderLeft, assignedBorder);
+assert.notEqual(historyRows[0].style.background, historyRows[1].style.background);
+assert.equal(historyContent.children[2].textContent, 'Entry 1');
+console.log('PASS: Photo ID status colors, legend and selection preview');
 assert.ok(!actions().some(child => child.textContent === 'Previous page'));
 await click('Next page');
 assert.ok(calls.at(-1).path.includes('before=100'));

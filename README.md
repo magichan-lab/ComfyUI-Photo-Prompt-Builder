@@ -74,7 +74,7 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 ## History UI
 
 - Use the native multiline text fields for direct editing.
-- Click the `履歴` button to the right of an input field to open a dialog with a selectable history list. Use Previous page / Next page to browse 100 entries at a time. Inspect the full text, apply a value, delete one value, or clear that section's history.
+- Click the `履歴` button to the right of an input field to open a dialog with a selectable history list. Entries linked to a Photo ID appear in green; unlinked entries appear in gray, with a legend explaining the colors. Text and left border colors remain visible when selected. Use Previous page / Next page to browse 100 entries at a time. Inspect the full text, apply a value, delete one value, or clear that section's history.
 - The node's lower controls use two rows: Photo ID search / `Select Photo ID` / `Rename` / `Delete`, then the Photo ID input for saving / `Save` / `Preview`.
 - Click `Save` to save immediately (even when `auto_save_history` is off).
 - Manual save assigns one Photo ID to all enabled, nonempty fields. Leave the `photo_id` input blank to use the save time in `yymmddHHMMSS` format, or enter up to 24 letters, digits, and `!#$%*+-./:;=?@_~` characters.
