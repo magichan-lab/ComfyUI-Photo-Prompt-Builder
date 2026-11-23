@@ -424,6 +424,7 @@ function openRenamePhotoId(node) {
     const input = document.createElement('input');
     input.type = 'text';
     input.maxLength = 24;
+    input.value = oldId;
     input.placeholder = 'New Photo ID';
     input.setAttribute('aria-label', 'New Photo ID');
     Object.assign(input.style, {
