@@ -544,6 +544,65 @@ function addPhotoControls(node) {
   syncPhotoIds(cache.photo_ids);
 }
 
+function addReferencePromptControls(node) {
+  const tagWidget = widget(node, 'additional_tag');
+  const promptWidget = widget(node, 'additional_prompt');
+  if (!tagWidget || !promptWidget) return;
+  const row = document.createElement('div');
+  Object.assign(row.style, {
+    display: 'flex', width: '100%', height: '100%', minHeight: '32px',
+    alignItems: 'stretch', gap: '6px', boxSizing: 'border-box',
+  });
+  const select = document.createElement('select');
+  select.title = 'Tag to append prompt to';
+  select.setAttribute('aria-label', select.title);
+  for (const [, label] of FIELDS) {
+    const option = document.createElement('option');
+    option.value = label;
+    option.textContent = label;
+    select.append(option);
+  }
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Additional prompt / LoRA trigger words';
+  input.setAttribute('aria-label', 'Additional prompt / LoRA trigger words');
+  for (const element of [select, input]) {
+    Object.assign(element.style, {
+      minWidth: '0', padding: '5px', background: '#17191c', color: '#fff',
+      border: '1px solid #666', borderRadius: '6px', boxSizing: 'border-box',
+    });
+  }
+  select.style.flex = '0 1 145px';
+  input.style.flex = '1 1 0';
+  select.addEventListener('change', () => setWidget(node, 'additional_tag', select.value));
+  input.addEventListener('input', () => setWidget(node, 'additional_prompt', input.value));
+  for (const target of [tagWidget, promptWidget]) {
+    target.type = 'hidden';
+    target.options ??= {};
+    target.options.hidden = true;
+    target.computeSize = () => [0, -4];
+    target.draw = () => {};
+    const oldCallback = target.callback;
+    target.callback = function (...args) {
+      const result = oldCallback?.apply(this, args);
+      sync();
+      return result;
+    };
+  }
+  function sync() {
+    select.value = tagWidget.value;
+    input.value = String(promptWidget.value ?? '');
+  }
+  sync();
+  row.append(select, input);
+  const control = node.addDOMWidget('Additional prompt', 'additional_prompt_controls', row, {
+    serialize: false, hideOnZoom: false,
+    getMinHeight: () => 52, getHeight: () => 52,
+  });
+  control.serialize = false;
+  return sync;
+}
+
 function fitNodeToWidgets(node) {
   const [widgetWidth, widgetHeight] = node.computeSize();
   node.setSize([
@@ -560,6 +619,7 @@ app.registerExtension({
       nodeType.prototype.onNodeCreated = function (...args) {
         const result = oldCreated?.apply(this, args);
         referenceNodes.add(this);
+        const syncAdditionalPrompt = addReferencePromptControls(this);
         const photoWidget = widget(this, 'photo_id');
         if (photoWidget) {
           const oldCallback = photoWidget.callback;
@@ -611,6 +671,7 @@ app.registerExtension({
         const oldConfigure = this.onConfigure;
         this.onConfigure = function (...configureArgs) {
           const configured = oldConfigure?.apply(this, configureArgs);
+          syncAdditionalPrompt?.();
           markReferenceSelection(this);
           return configured;
         };

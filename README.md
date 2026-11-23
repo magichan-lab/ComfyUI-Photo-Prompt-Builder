@@ -31,7 +31,9 @@ The internal ComfyUI node IDs are `MagichanLab_Krea2PhotoPromptBuilder` and `Mag
 
 ## Inputs
 
-**Krea2 Photo Prompt Reference**, under `prompt/photo`, has a Photo ID dropdown as its only workflow input. It reads the selected combination from shared history when executed and outputs the same labeled `prompt` (STRING) as the builder, ready for a CLIP text encoder's `text` input. It never saves or edits history. Running without a selected Photo ID, or with a deleted ID, raises an error. The dropdown refreshes when the node is added or the builder saves a Photo ID.
+**Krea2 Photo Prompt Reference**, under `prompt/photo`, has a Photo ID dropdown to select a saved combination. It reads the selected combination from shared history when executed and outputs the same labeled `prompt` (STRING) as the builder, ready for a CLIP text encoder's `text` input. It never saves or edits history. Running without a selected Photo ID, or with a deleted ID, raises an error. The dropdown refreshes when the node is added or the builder saves a Photo ID.
+
+A tag dropdown and an additional prompt input (for example, LoRA trigger words) appear side by side. Choose one of the nine sections to append the text on a new line at execution time, including sections absent from the saved combination. A blank input leaves the output unchanged. Additions are never written to shared history or Photo IDs.
 
 The reference node also shows a search field and a gallery of Photo IDs with example thumbnails below the dropdown. Typing part of an ID immediately filters the dropdown and gallery without changing the selected ID; matching is case-insensitive. Click an image to select its ID. Create `data/images/` and save files such as `data/images/photo-1.jpg` or `data/images/photo-1.png` for ID `photo-1`. PNG, JPG, JPEG, WebP, and GIF are supported, in that order when multiple formats exist. IDs without images remain selectable. IDs containing `/` cannot have a matching filename. Images are scaled in the browser without modifying the source files. `data/images/` is excluded from Git and Registry packages so local example images are not published.
 

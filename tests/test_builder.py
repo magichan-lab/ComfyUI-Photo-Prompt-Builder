@@ -282,6 +282,25 @@ class TestCompose(unittest.TestCase):
             self.assertEqual(reference.build('photo-1'),
                              ('Subject:\nA woman\n\nLighting:\nSoft light',))
             self.assertEqual(history.FILE.read_bytes(), before)
+            self.assertEqual(set(reference.INPUT_TYPES()['optional']),
+                             {'additional_tag', 'additional_prompt'})
+            for field, label in mod.HEADINGS.items():
+                with self.subTest(tag=label):
+                    expected = {'subject': 'A woman', 'lighting': 'Soft light'}
+                    expected[field] = '\n'.join(filter(None, [expected.get(field, ''),
+                                                              'trigger_one, trigger_two']))
+                    self.assertEqual(
+                        reference.build('photo-1', label, ' trigger_one, trigger_two '),
+                        (mod.compose_prompt(expected, {}),))
+            self.assertEqual(reference.build('photo-1', 'Subject', '  '),
+                             reference.build('photo-1'))
+            self.assertEqual(reference.build('photo-1'),
+                             ('Subject:\nA woman\n\nLighting:\nSoft light',))
+            self.assertEqual(history.FILE.read_bytes(), before)
+            self.assertEqual(reference.IS_CHANGED('photo-1', 'Subject', 'trigger'),
+                             reference.IS_CHANGED('photo-1'))
+            with self.assertRaisesRegex(ValueError, 'Unknown additional prompt tag'):
+                reference.build('photo-1', 'invalid', 'trigger')
             with self.assertRaisesRegex(ValueError, 'Select a Photo ID'):
                 reference.build(mod.SELECT_PHOTO_ID)
             with self.assertRaisesRegex(ValueError, 'does not exist'):

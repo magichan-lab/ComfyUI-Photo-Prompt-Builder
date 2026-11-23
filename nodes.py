@@ -71,19 +71,31 @@ class Krea2PhotoPromptReference:
     @classmethod
     def INPUT_TYPES(cls):
         return {'required': {'photo_id': ([SELECT_PHOTO_ID, *sorted(read_photo_ids())],
-                                          {'default': SELECT_PHOTO_ID})}}
+                                          {'default': SELECT_PHOTO_ID})},
+                'optional': {
+                    'additional_tag': (list(HEADINGS.values()), {'default': 'Subject'}),
+                    'additional_prompt': ('STRING', {'default': '', 'multiline': False,
+                                                     'dynamicPrompts': False}),
+                }}
 
     @classmethod
-    def IS_CHANGED(cls, photo_id):
+    def IS_CHANGED(cls, photo_id, additional_tag='Subject', additional_prompt=''):
         # Invalidate ComfyUI's execution cache when a saved combination changes.
         return json.dumps(read_photo_ids().get(photo_id), ensure_ascii=False, sort_keys=True)
 
-    def build(self, photo_id):
+    def build(self, photo_id, additional_tag='Subject', additional_prompt=''):
         if not photo_id or photo_id == SELECT_PHOTO_ID:
             raise ValueError('Select a Photo ID before running the reference node.')
         values = read_photo_ids().get(photo_id)
         if values is None:
             raise ValueError(f'Photo ID "{photo_id}" does not exist in saved history.')
+        if additional_prompt.strip():
+            field = next((key for key, label in HEADINGS.items() if label == additional_tag), None)
+            if field is None:
+                raise ValueError(f'Unknown additional prompt tag: {additional_tag}')
+            values = dict(values)
+            values[field] = '\n'.join(filter(None, [values.get(field, '').strip(),
+                                                     additional_prompt.strip()]))
         return (compose_prompt(values, {}),)
 
 
