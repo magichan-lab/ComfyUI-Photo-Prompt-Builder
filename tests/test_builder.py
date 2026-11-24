@@ -65,6 +65,22 @@ class TestHistory(unittest.TestCase):
         self.h.clear_field('subject')
         self.assertEqual(self.h.read_history()['subject'], [])
 
+    def test_edit_history_preserves_photo_ids_order_and_other_fields(self):
+        self.h.add_entries({'subject': 'Shared', 'pose': 'Shared'}, photo_id='one')
+        self.h.add_entries({'subject': 'Later'}, photo_id='two')
+        self.h.add_entries({'subject': 'Shared'}, photo_id='three')
+        before = self.h.read_history()['subject']
+        self.h.update_entry('subject', 'Shared', 'Edited')
+        self.assertEqual(self.h.read_history()['subject'],
+                         ['Edited' if value == 'Shared' else value for value in before])
+        self.assertEqual(self.h.read_photo_id('one'),
+                         {'subject': 'Edited', 'pose': 'Shared'})
+        self.assertEqual(self.h.read_photo_id('three'), {'subject': 'Edited'})
+        self.assertEqual(self.h.read_history()['pose'], ['Shared'])
+        with self.assertRaises(ValueError):
+            self.h.update_entry('subject', 'Edited', 'Later')
+        self.assertEqual(self.h.read_photo_id('one')['subject'], 'Edited')
+
     def test_invalid_and_unicode(self):
         self.h.add_entries({'environment': '東京・夕暮れ'})
         self.assertEqual(self.h.read_history()['environment'], ['東京・夕暮れ'])

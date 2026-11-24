@@ -89,6 +89,26 @@ Medium shot, eye-level, 50mm lens
 - 履歴は削除するまで件数に関係なく保持されます。履歴から文字列を削除・全削除すると、関連するPhoto IDからもその項目が外れます。
 - **履歴は同じComfyUI環境にあるすべてのビルダーノードで共有されます。** 現在の入力値と切り替え状態は、各ComfyUIワークフローにも保存されます。
 
+### ローカルの履歴エディター
+
+ComfyUIを起動せずに履歴を編集する場合は、このリポジトリのルートで `python3 tools/prompt_history_editor.py` を実行します。Python標準の `tkinter` が必要です。アプリは `data/prompt_history.sqlite3` を直接開き、DBが未作成なら既存の移行処理で初期化します。
+
+別のSQLiteファイルを編集する場合は、起動引数で既存ファイルを指定します。相対パスは実行時の作業ディレクトリを基準に解決します。指定ファイルが存在しない場合はアプリを起動せずエラーを表示します。
+
+```bash
+python3 tools/prompt_history_editor.py /path/to/prompt_history.sqlite3
+# 同じ指定をオプション形式でも行えます
+python3 tools/prompt_history_editor.py --database /path/to/prompt_history.sqlite3
+```
+
+右側の入力エリアへテキストをドラッグ＆ドロップするには、編集アプリを起動するPython環境に `python3 -m pip install -r tools/requirements.txt` で `tkinterdnd2` を追加します。この追加パッケージはComfyUIノードには不要です。未導入の場合もアプリは起動でき、`Paste Tagged Prompt`ボタンでクリップボードのテキストを同じように取り込めます。
+
+GUIのボタン・ラベル・ダイアログは英語表記です。左側でPhoto IDを検索・選択すると、関連する9項目を入力欄へ呼び出します。各項目の`History`から100件ずつ閲覧し、入力欄への適用、保存済み本文の編集、個別削除、項目内の全件削除ができます。本文を編集した場合はPhoto IDとの関連付けを維持します。同じ項目に既にある本文への変更は重複を避けるため拒否します。`Save History`は入力欄の内容を保存し、有効な項目をPhoto IDに関連付けます。空欄のPhoto IDは保存時刻で生成されます。`Preview Prompt`はノードと同じ見出し・順序で表示し、コピーできます。Photo IDのリネームと削除も左側から行えます。
+
+ドロップしたテキストの行頭に `Subject:`、`Clothing:` などノードと同じ見出しがあれば、その見出しから次の見出しまでを対応する入力欄へ入れます。見出し行の後に続く本文と `Subject: text` のような同じ行の本文の両方を受け付けます。関係のないタグは無視し、含まれない項目の入力欄は空にします。対応する見出しが1つもないテキストでは入力欄を変更しません。取り込みだけでは履歴DBには保存されません。
+
+削除した履歴とPhoto IDの関連付けは元に戻せないため、必要に応じて事前に下記のJSON Exportでバックアップしてください。ComfyUIを同時に開いていた場合は、ブラウザー画面を更新してPhoto ID一覧を読み直してください。
+
 ## 保存場所とバックアップ
 
 履歴は`ComfyUI/custom_nodes/comfyui-photo-prompt-builder/data/prompt_history.sqlite3`に保存されます。Python標準のSQLiteを使用するため、依存パッケージの追加は不要です。本文・項目・項目別履歴・Photo IDの対応を別テーブルに正規化し、一意制約と外部キーで重複や関連付けの不整合を防ぎます。履歴の新着順取得、本文検索、Photo ID検索にインデックスを使用します。履歴画面はカーソル方式で100件ずつ読み込み、自動保存は対象レコードのみを書き込みます。参照ノードも選択したIDの組み合わせだけを読み込みます。APIのDB処理はComfyUIのイベントループ外で実行します。Photo ID選択欄は引き続き全組み合わせを取得するため、Photo IDが非常に多い場合は初期読み込みに時間がかかる可能性があります。

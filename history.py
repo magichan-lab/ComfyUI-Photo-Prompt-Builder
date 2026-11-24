@@ -358,6 +358,34 @@ def delete_entry(field, value, *, include_history=True):
         return _state(conn, include_history)
 
 
+def update_entry(field, old_value, new_value, *, include_history=True):
+    """Edit one saved entry, preserving its order and Photo ID associations."""
+    if field not in FIELDS or not isinstance(old_value, str) or not isinstance(new_value, str):
+        raise ValueError('Invalid field or value')
+    value = new_value.strip()
+    if not value or len(value) > MAX_TEXT_LENGTH:
+        raise ValueError('History text must be 1–8000 characters')
+    with _database(write=True) as conn:
+        row = conn.execute(
+            'SELECT h.text_id, h.position FROM history h JOIN texts t ON t.id = h.text_id '
+            'WHERE h.field = ? AND t.text = ?', (field, old_value)).fetchone()
+        if row is None:
+            raise ValueError('History entry does not exist')
+        old_id, position = row
+        if value == old_value:
+            return _state(conn, include_history)
+        if conn.execute('SELECT 1 FROM history h JOIN texts t ON t.id = h.text_id '
+                        'WHERE h.field = ? AND t.text = ?', (field, value)).fetchone():
+            raise ValueError('This text already exists in the field history')
+        conn.execute('INSERT OR IGNORE INTO texts(text) VALUES (?)', (value,))
+        new_id = conn.execute('SELECT id FROM texts WHERE text = ?', (value,)).fetchone()[0]
+        conn.execute('INSERT INTO history VALUES (?, ?, ?)', (field, new_id, position))
+        conn.execute('UPDATE photo_fields SET text_id = ? WHERE field = ? AND text_id = ?',
+                     (new_id, field, old_id))
+        conn.execute('DELETE FROM history WHERE field = ? AND text_id = ?', (field, old_id))
+        return _state(conn, include_history)
+
+
 def clear_field(field, *, include_history=True):
     if field not in FIELDS:
         raise ValueError('Invalid field')
