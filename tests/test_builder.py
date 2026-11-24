@@ -468,10 +468,9 @@ class TestCompose(unittest.TestCase):
 
 
 class TestImages(unittest.TestCase):
-    def test_local_example_lookup_uses_supported_files_only(self):
-        import sys
+    @staticmethod
+    def image_module():
         import types
-        from unittest.mock import patch
         package = types.ModuleType('testimages')
         package.__path__ = [str(ROOT)]
         with patch.dict(sys.modules, {'testimages': package,
@@ -479,6 +478,10 @@ class TestImages(unittest.TestCase):
             spec = importlib.util.spec_from_file_location('testimages.images', ROOT / 'images.py')
             images = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(images)
+        return images
+
+    def test_local_example_lookup_uses_supported_files_only(self):
+        images = self.image_module()
         with tempfile.TemporaryDirectory() as directory:
             images.IMAGE_DIR = Path(directory) / 'images'
             self.assertEqual(images.photo_images(), {})
@@ -492,6 +495,88 @@ class TestImages(unittest.TestCase):
             found = images.photo_images()
             self.assertEqual(set(found), {'photo-1', 'photo-2'})
             self.assertEqual(found['photo-1'].name, 'photo-1.png')
+
+    def test_completed_generation_saves_linked_output_as_thumbnail(self):
+        from PIL import Image
+        from types import SimpleNamespace
+        images = self.image_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / 'output'
+            output.mkdir()
+            images.IMAGE_DIR = root / 'images'
+            Image.new('RGB', (1200, 600), 'red').save(output / 'generated.webp')
+            Image.new('RGB', (1200, 600), 'blue').save(output / 'unrelated.png')
+            prompt = {
+                '1': {'class_type': 'MagichanLab_Krea2PhotoPromptBuilder',
+                      'inputs': {'photo_id': 'saved-1', 'subject': 'Portrait',
+                                 'pose': 'Draft pose', 'use_pose': False}},
+                '2': {'class_type': 'CLIPTextEncode', 'inputs': {'text': ['1', 0]}},
+                '3': {'class_type': 'SaveImage', 'inputs': {'images': ['2', 0]}},
+                '4': {'class_type': 'SaveImage', 'inputs': {}},
+            }
+            history_item = {'prompt': (0, 'prompt-1', prompt), 'outputs': {
+                '3': {'images': [{'filename': 'generated.webp', 'subfolder': '', 'type': 'output'}]},
+                '4': {'images': [{'filename': 'unrelated.png', 'subfolder': '', 'type': 'output'}]},
+            }}
+            folder_paths = SimpleNamespace(get_directory_by_type=lambda kind: str(output))
+            self.assertEqual(images.save_generated_thumbnails(
+                history_item, {'saved-1': {'subject': 'Portrait'}}, folder_paths), ['saved-1'])
+            with Image.open(images.IMAGE_DIR / 'saved-1.png') as thumbnail:
+                self.assertEqual(thumbnail.size, (256, 128))
+                red, green, blue = thumbnail.getpixel((0, 0))
+                self.assertGreater(red, 250)
+                self.assertLess(green, 5)
+                self.assertLess(blue, 5)
+            self.assertEqual(list(images.IMAGE_DIR.iterdir()), [images.IMAGE_DIR / 'saved-1.png'])
+
+    def test_changed_prompt_preserves_existing_thumbnail_until_saved_values_match(self):
+        from PIL import Image
+        from types import SimpleNamespace
+        images = self.image_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / 'output'
+            output.mkdir()
+            images.IMAGE_DIR = root / 'images'
+            images.IMAGE_DIR.mkdir()
+            Image.new('RGB', (32, 32), 'red').save(images.IMAGE_DIR / 'saved.png')
+            Image.new('RGB', (64, 64), 'blue').save(output / 'generated.png')
+            inputs = {'photo_id': 'saved', 'subject': 'Edited portrait',
+                      'lighting': 'Soft', 'use_lighting': False}
+            prompt = {'1': {'class_type': 'MagichanLab_Krea2PhotoPromptBuilder',
+                            'inputs': inputs},
+                      '2': {'class_type': 'SaveImage', 'inputs': {'images': ['1', 0]}}}
+            history_item = {'prompt': (0, 'prompt-2', prompt), 'outputs': {
+                '2': {'images': [{'filename': 'generated.png', 'subfolder': '', 'type': 'output'}]}}}
+            folder_paths = SimpleNamespace(get_directory_by_type=lambda kind: str(output))
+            old_bytes = (images.IMAGE_DIR / 'saved.png').read_bytes()
+            self.assertEqual(images.save_generated_thumbnails(
+                history_item, {'saved': {'subject': 'Original portrait'}}, folder_paths), [])
+            self.assertEqual((images.IMAGE_DIR / 'saved.png').read_bytes(), old_bytes)
+            self.assertEqual(images.save_generated_thumbnails(
+                history_item, {'saved': {'subject': 'Edited portrait'}}, folder_paths), ['saved'])
+            with Image.open(images.IMAGE_DIR / 'saved.png') as thumbnail:
+                self.assertEqual(thumbnail.getpixel((0, 0)), (0, 0, 255))
+
+    def test_generation_ignores_unsaved_ids_and_escaping_paths(self):
+        from types import SimpleNamespace
+        images = self.image_module()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / 'output'
+            output.mkdir()
+            images.IMAGE_DIR = root / 'images'
+            (root / 'outside.png').write_bytes(b'outside')
+            prompt = {'1': {'class_type': 'MagichanLab_Krea2PhotoPromptBuilder',
+                            'inputs': {'photo_id': 'saved'}},
+                      '2': {'class_type': 'SaveImage', 'inputs': {'images': ['1', 0]}}}
+            history_item = {'prompt': (0, 'prompt-2', prompt), 'outputs': {
+                '2': {'images': [{'filename': '../outside.png', 'subfolder': '', 'type': 'output'}]}}}
+            folder_paths = SimpleNamespace(get_directory_by_type=lambda kind: str(output))
+            self.assertEqual(images.save_generated_thumbnails(history_item, {'saved': {}}, folder_paths), [])
+            self.assertEqual(images.save_generated_thumbnails(history_item, {}, folder_paths), [])
+            self.assertFalse(images.IMAGE_DIR.exists())
 
 
 if __name__ == '__main__':

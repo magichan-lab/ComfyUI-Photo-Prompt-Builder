@@ -6,8 +6,9 @@ from aiohttp import web
 from server import PromptServer
 from .history import (PhotoIdConflict, add_entries, clear_field, delete_entry,
                       delete_photo_id, export_data, import_data, list_photo_ids,
-                      read_history_page, read_photo_id, read_state, rename_photo_id)
-from .images import photo_images
+                      read_history_page, read_photo_id, read_photo_ids, read_state,
+                      rename_photo_id)
+from .images import photo_images, save_generated_thumbnails
 
 routes = PromptServer.instance.routes
 
@@ -60,6 +61,24 @@ async def get_photo_image(request):
             raise web.HTTPNotFound()
         return web.FileResponse(path, headers={'Cache-Control': 'no-store'})
     except (OSError, ValueError, RuntimeError) as exc:
+        return _error(exc)
+
+
+@routes.post('/magichanlab_photo_prompt/photo_id/generation_thumbnail')
+async def post_generation_thumbnail(request):
+    try:
+        body = await request.json()
+        prompt_id = body.get('prompt_id') if isinstance(body, dict) else None
+        if not isinstance(prompt_id, str) or not prompt_id:
+            raise ValueError('prompt_id is required')
+        history = PromptServer.instance.prompt_queue.get_history(prompt_id=prompt_id)
+        if prompt_id not in history:
+            return web.json_response({'pending': True}, status=202)
+        import folder_paths
+        saved_photo_ids = await _run(read_photo_ids)
+        saved = await _run(save_generated_thumbnails, history[prompt_id], saved_photo_ids, folder_paths)
+        return web.json_response({'saved_photo_ids': saved})
+    except (OSError, ValueError, TypeError, RuntimeError, web.HTTPBadRequest) as exc:
         return _error(exc)
 
 

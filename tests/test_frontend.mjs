@@ -22,16 +22,25 @@ class Element {
 }
 const body = new Element('body');
 const calls = [];
+const events = new Map();
+let thumbnailAttempts = 0;
 const entries = Array.from({ length: 205 }, (_, i) => `Entry ${i}`);
 let extension;
 const context = vm.createContext({
   URLSearchParams,
+  setTimeout,
   HTMLTextAreaElement: class {},
   document: { body, createElement: tag => new Element(tag) },
   window: { confirm: () => true },
   app: { registerExtension(value) { extension = value; } },
-  api: { async fetchApi(path, options) {
+  api: { addEventListener(name, callback) { events.set(name, callback); }, async fetchApi(path, options) {
     calls.push({ path, options });
+    if (path.endsWith('/generation_thumbnail')) {
+      thumbnailAttempts++;
+      return thumbnailAttempts === 1
+        ? { status: 202, ok: true }
+        : { status: 200, ok: true, json: async () => ({ saved_photo_ids: ['photo-1'] }) };
+    }
     const query = new URL(path, 'http://localhost').searchParams;
     if (query.has('field')) {
       const start = Number(query.get('before') || 0);
@@ -46,6 +55,7 @@ const context = vm.createContext({
 });
 const source = await readFile(new URL('../web/photo_prompt_builder.js', import.meta.url), 'utf8');
 vm.runInContext(source.replace(/^import .*;\r?\n/gm, ''), context);
+extension.setup();
 const { openHistory, saveCurrent, fields } = vm.runInContext('({openHistory, saveCurrent, fields: FIELDS})', context);
 class Builder {
   constructor() {
@@ -127,3 +137,13 @@ assert.ok(save);
 assert.ok(!Object.hasOwn(JSON.parse(save.options.body), 'limit'));
 assert.equal(JSON.parse(save.options.body).entries.subject, 'Entry 200');
 console.log('PASS: save payload omits the removed retention limit');
+
+photoWidget.value = '';
+await saveCurrent(node);
+assert.equal(photoWidget.value, 'photo-1');
+events.get('execution_success')({ detail: { prompt_id: 'completed-prompt' } });
+await new Promise(resolve => setTimeout(resolve, 300));
+const thumbnail = calls.find(call => call.path.endsWith('/generation_thumbnail'));
+assert.deepEqual(JSON.parse(thumbnail.options.body), { prompt_id: 'completed-prompt' });
+assert.equal(thumbnailAttempts, 2);
+console.log('PASS: completed prompt triggers thumbnail save with its prompt ID');

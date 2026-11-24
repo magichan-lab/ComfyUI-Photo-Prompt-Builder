@@ -57,6 +57,24 @@ async function refreshReferenceImages() {
   for (const node of referenceNodes) renderReferenceGallery(node);
 }
 
+async function saveGenerationThumbnail(promptId) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const response = await api.fetchApi(`${PHOTO_ID_PATH}/generation_thumbnail`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt_id: promptId }),
+    });
+    if (response.status === 202) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      continue;
+    }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const result = await response.json();
+    if (result.saved_photo_ids?.length) await refreshReferenceImages();
+    return;
+  }
+  throw new Error('Generation history was not available in time');
+}
+
 function markReferenceSelection(node) {
   const selected = widget(node, 'photo_id')?.value;
   for (const button of node.referenceGallery?.querySelectorAll('button') ?? []) {
@@ -427,6 +445,7 @@ async function saveCurrent(node) {
       node.photoControls.search.value = '';
       renderPhotoIds(node, result.saved_photo_id);
     }
+    setWidget(node, 'photo_id', result.saved_photo_id);
     notify(`Saved current values with Photo ID: ${result.saved_photo_id}`);
   } catch (error) { notify(`Cannot save history: ${error.message}`); }
 }
@@ -635,6 +654,12 @@ function fitNodeToWidgets(node) {
 
 app.registerExtension({
   name: 'MagichanLab_photo_prompt_builder',
+  setup() {
+    api.addEventListener('execution_success', ({ detail }) => {
+      if (detail?.prompt_id) void saveGenerationThumbnail(detail.prompt_id).catch((error) =>
+        notify(`Cannot save Photo ID thumbnail: ${error.message}`));
+    });
+  },
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name === REFERENCE_NODE_TYPE) {
       const oldCreated = nodeType.prototype.onNodeCreated;
