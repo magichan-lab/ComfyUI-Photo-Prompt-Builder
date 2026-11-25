@@ -52,6 +52,15 @@ const context = vm.createContext({
         next_cursor: start + 100 < entries.length ? start + 100 : null,
       }) };
     }
+    if (path.endsWith('/history') && options?.body) {
+      const payload = JSON.parse(options.body);
+      const savedPhotoId = payload.photo_id || 'photo-1';
+      const saved = Object.fromEntries(Object.entries(payload.entries)
+        .filter(([field, value]) => payload.enabled[field] && value));
+      return { ok: true, json: async () => ({
+        photo_ids: { [savedPhotoId]: saved }, saved_photo_id: savedPhotoId,
+      }) };
+    }
     return { ok: true, json: async () => ({ photo_ids: {}, saved_photo_id: 'photo-1' }) };
   } },
 });
@@ -185,3 +194,32 @@ const thumbnail = calls.find(call => call.path.endsWith('/generation_thumbnail')
 assert.deepEqual(JSON.parse(thumbnail.options.body), { prompt_id: 'completed-prompt' });
 assert.equal(thumbnailAttempts, 2);
 console.log('PASS: completed prompt triggers thumbnail save with its prompt ID');
+
+const { syncPhotoIds } = vm.runInContext('({syncPhotoIds})', context);
+syncPhotoIds({ 'photo-1': { subject: 'Original' }, 'photo-2': { subject: 'Other' } });
+node.photoControls.select.value = 'photo-1';
+node.photoControls.select.listeners.change();
+const selectedOption = () => node.photoControls.select.children.find(option => option.value === 'photo-1');
+assert.equal(node.widgets[0].value, 'Original');
+assert.equal(selectedOption().textContent, 'photo-1');
+node.widgets[0].value = 'Changed';
+subjectControl.textarea.listeners.input();
+assert.equal(selectedOption().textContent, 'photo-1 [Edited]');
+assert.equal(node.photoControls.select.value, 'photo-1');
+assert.equal(photoWidget.value, 'photo-1');
+assert.equal(node.photoControls.select.style.color, '#ffd58a');
+node.widgets[0].value = 'Original';
+node.widgets[0].callback('Original');
+assert.equal(selectedOption().textContent, 'photo-1');
+node.photoControls.select.value = 'photo-2';
+node.photoControls.select.listeners.change();
+assert.equal(node.widgets[0].value, 'Other');
+assert.equal(node.photoControls.select.children.find(option => option.value === 'photo-2').textContent, 'photo-2');
+node.photoControls.select.value = 'photo-1';
+node.photoControls.select.listeners.change();
+node.widgets[0].value = 'Changed again';
+subjectControl.textarea.listeners.input();
+await saveCurrent(node);
+assert.equal(selectedOption().textContent, 'photo-1');
+assert.equal(node.photoControls.select.style.color, '#fff');
+console.log('PASS: selected Photo ID marks edits and clears after revert, save, or selection');

@@ -21,6 +21,8 @@ const nodes = new Set();
 const referenceNodes = new Set();
 const PHOTO_ID_RE = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
 const SELECT_ID = '(Select Photo ID)';
+const EDITED_SUFFIX = ' [Edited]';
+const EDITED_COLOR = '#ffd58a';
 const photoIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 function renderPhotoIds(node, selectedId = node.photoControls.select.value) {
@@ -36,7 +38,21 @@ function renderPhotoIds(node, selectedId = node.photoControls.select.value) {
     return option;
   }));
   select.value = values.includes(selectedId) ? selectedId : SELECT_ID;
+  updatePhotoIdEdited(node);
   node.setDirtyCanvas?.(true, true);
+}
+
+function updatePhotoIdEdited(node) {
+  const select = node.photoControls?.select;
+  if (!select) return;
+  const photoId = select.value;
+  const saved = cache.photo_ids[photoId];
+  const edited = !!saved && FIELDS.some(([field]) =>
+    (isConnected(node, field) ? '' : String(widget(node, field)?.value ?? '')) !== (saved[field] ?? ''));
+  const option = [...select.children].find((item) => item.value === photoId);
+  if (option) option.textContent = edited ? `${photoId}${EDITED_SUFFIX}` : photoId;
+  select.style.color = edited ? EDITED_COLOR : '#fff';
+  select.title = edited ? `${photoId}${EDITED_SUFFIX}` : 'Select Photo ID';
 }
 
 function syncPhotoIds(photoIds) {
@@ -204,7 +220,10 @@ function setWidget(node, name, value) {
 }
 
 function applyPhotoId(node, photoId) {
-  if (!Object.hasOwn(cache.photo_ids, photoId)) return;
+  if (!Object.hasOwn(cache.photo_ids, photoId)) {
+    updatePhotoIdEdited(node);
+    return;
+  }
   const values = cache.photo_ids[photoId];
   for (const [key] of FIELDS) {
     if (isConnected(node, key)) continue;
@@ -212,6 +231,7 @@ function applyPhotoId(node, photoId) {
     setWidget(node, key, value);
   }
   setWidget(node, 'photo_id', photoId);
+  updatePhotoIdEdited(node);
 }
 
 function compose(node) {
@@ -416,6 +436,13 @@ function addHistoryButton(node, field, label) {
   row.append(textarea, button);
   container.append(heading, row);
   target.element = container;
+  textarea.addEventListener('input', () => updatePhotoIdEdited(node));
+  const oldCallback = target.callback;
+  target.callback = function (...args) {
+    const result = oldCallback?.apply(this, args);
+    updatePhotoIdEdited(node);
+    return result;
+  };
   const status = document.createElement('div');
   status.textContent = `${label}: Exclude — external node connected / 外部ノード接続中`;
   Object.assign(status.style, {
@@ -443,6 +470,7 @@ function syncConnections(node) {
     control.status.style.display = connected ? 'block' : 'none';
   }
   fitNodeToWidgets(node);
+  updatePhotoIdEdited(node);
   node.setDirtyCanvas?.(true, true);
 }
 
