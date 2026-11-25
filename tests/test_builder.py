@@ -372,6 +372,61 @@ class TestHistory(unittest.TestCase):
         self.assertEqual(self.h.export_data(), before)
 
 
+class TestImageToTextSave(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import types
+        package = types.ModuleType('test_image_to_text')
+        package.__path__ = [str(ROOT)]
+        history = load('image_to_text_history', 'history.py')
+        cls.history = history
+        with patch.dict(sys.modules, {'test_image_to_text': package,
+                                      'test_image_to_text.history': history}):
+            spec = importlib.util.spec_from_file_location('test_image_to_text.nodes', ROOT / 'nodes.py')
+            cls.nodes = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cls.nodes)
+
+    def setUp(self):
+        self.entries = {field: '' for field in self.nodes.FIELDS}
+        self.entries['subject'] = 'A person'
+        self.raw = json.dumps(self.entries)
+
+    def test_json_validation_rejects_missing_extra_and_nonstring_fields(self):
+        for invalid in ('not json', '{}', json.dumps({**self.entries, 'extra': 'x'}),
+                        json.dumps({**self.entries, 'subject': 12})):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                self.nodes.parse_image_tags(invalid)
+
+    def test_manual_does_not_save_until_button_action(self):
+        with patch.object(self.nodes, 'add_entries') as add:
+            result = self.nodes.Krea2ImageToTextSave().process(self.raw, 'Manual', 'source-1')
+        add.assert_not_called()
+        self.assertEqual(result['result'], ('Subject:\nA person', 'source-1'))
+        self.assertFalse(result['ui']['image_to_text'][0]['saved'])
+
+    def test_auto_saves_and_reports_photo_id(self):
+        with patch.object(self.nodes, 'add_entries') as add:
+            result = self.nodes.Krea2ImageToTextSave().process(self.raw, 'Auto', '', False)
+        photo_id = result['result'][1]
+        self.assertRegex(photo_id, r'^\d{12}$')
+        add.assert_called_once_with(self.entries, photo_id=photo_id,
+                                    overwrite=False, return_state=False)
+        self.assertTrue(result['ui']['image_to_text'][0]['saved'])
+
+    def test_auto_save_is_readable_by_existing_reference_storage(self):
+        original_db = self.history.DB_FILE
+        with tempfile.TemporaryDirectory() as directory:
+            self.history.DB_FILE = Path(directory) / 'history.sqlite3'
+            try:
+                result = self.nodes.Krea2ImageToTextSave().process(
+                    self.raw, 'Auto', 'image-1')
+                self.assertEqual(result['result'][1], 'image-1')
+                self.assertEqual(self.history.read_photo_id('image-1'),
+                                 {'subject': 'A person'})
+            finally:
+                self.history.DB_FILE = original_db
+
+
 class TestCompose(unittest.TestCase):
     def test_headings_blank_and_disabled(self):
         # Avoid importing ComfyUI's server (which isn't needed for node functionality).
@@ -388,10 +443,12 @@ class TestCompose(unittest.TestCase):
         self.assertEqual(mod.NODE_CLASS_MAPPINGS, {
             mod.NODE_ID: mod.Krea2PhotoPromptBuilder,
             mod.REFERENCE_NODE_ID: mod.Krea2PhotoPromptReference,
+            mod.IMAGE_TO_TEXT_NODE_ID: mod.Krea2ImageToTextSave,
         })
         self.assertEqual(mod.NODE_DISPLAY_NAME_MAPPINGS, {
             mod.NODE_ID: 'Krea2 Photo Prompt Builder',
             mod.REFERENCE_NODE_ID: 'Krea2 Photo Prompt Reference',
+            mod.IMAGE_TO_TEXT_NODE_ID: 'Krea2 Image to Text Save',
         })
         output = mod.compose_prompt(
             {'subject': ' A woman ', 'appearance': 'black hair', 'lighting': '  '},

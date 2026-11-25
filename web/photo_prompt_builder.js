@@ -768,6 +768,10 @@ function fitNodeToWidgets(node) {
 app.registerExtension({
   name: 'MagichanLab_photo_prompt_builder',
   setup() {
+    window.addEventListener('magichanlab-photo-ids-changed', () => {
+      void request(`${PATH}?include_history=0`).catch((error) =>
+        notify(`Cannot refresh Photo IDs: ${error.message}`));
+    });
     api.addEventListener('execution_success', ({ detail }) => {
       if (detail?.prompt_id) void saveGenerationThumbnail(detail.prompt_id).catch((error) =>
         notify(`Cannot save Photo ID thumbnail: ${error.message}`));

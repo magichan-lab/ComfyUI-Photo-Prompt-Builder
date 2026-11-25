@@ -29,6 +29,18 @@ ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`と`Magich
 
 ## 入力項目
 
+### 画像から9項目を保存する
+
+**Krea2 Image to Text Save**は`prompt/photo`カテゴリの保存ノードです。画像を直接分析するモデルは含みません。Qwen3.5などの画像分析ノードに画像と指示文を渡し、そのテキスト出力を`tags_json`へ接続してください。モデルには、説明文やMarkdownを付けず、以下の9キーを持つJSONオブジェクトを1つだけ返すよう指示します。判別できない項目は空文字にしてください。
+
+```json
+{"subject":"A person","appearance":"White shirt","hair_makeup":"","pose":"Standing","expression":"","environment":"","composition":"","lighting":"Soft side light","finishing":""}
+```
+
+入力は`tags_json`（STRING）、`save_mode`（`Auto`または`Manual`、初期値`Manual`）、`photo_id`（STRINGの文字入力欄。空欄なら実行時刻の`yymmddHHMMSS`を使用）、`overwrite`（BOOLEAN、初期値Off）です。`tags_json`は全9キーが必要で、値はそれぞれ最大8000文字の文字列です。すべて空の場合や不正なJSONの場合は保存せずエラーにします。出力は結合済みの`prompt`（STRING）と`photo_id`（STRING）です。手動モードの`photo_id`出力は保存前の予定IDです。
+
+`Auto`はワークフロー実行時に共有SQLite履歴へ保存します。`Manual`は実行結果をノード内に表示し、**Save**ボタンを押した時だけ保存します。画面に表示された内容とIDを保存するため、入力変更後はワークフローを再実行してください。既存Photo IDと内容が異なる場合、`overwrite`がOffなら自動モードはエラー、手動モードはSave時に上書きを確認します。保存したIDは参照ノードから再利用できます。空欄の場合、同じ秒に複数回実行するとIDが重複する可能性があります。同じIDへ更新する場合は`photo_id`を指定してください。現在のサムネイル自動保存はビルダーノード経由の生成を対象としており、この保存ノードからは行いません。
+
 **Krea2 Photo Prompt Reference**は`prompt/photo`カテゴリにある参照専用ノードです。選択中のPhoto IDを表示する入力欄と、その直下のドロップダウンで参照する組み合わせを選択します。入力すると候補を絞り込めます。選択したIDに関連する9項目を実行時に共有履歴から読み込み、ビルダーと同じ見出し・順序の`prompt`（STRING）を出力します。CLIPTextEncodeの`text`入力に接続できます。履歴の保存・編集・削除は行いません。Photo IDが未選択、または削除済みの場合は実行エラーになります。新しいIDの候補はノード追加時やビルダーで保存した際に更新されます。
 
 追加先タグのドロップダウンと追加プロンプト（LoRAのトリガーワードなど）の入力欄を横一行に配置しています。9項目から追加先を選ぶと、実行時にその項目の末尾へ改行で追記します。元の項目が空でも追加でき、入力欄が空の場合は元のプロンプトをそのまま出力します。追加内容は共有履歴やPhoto IDには保存されません。

@@ -1,7 +1,8 @@
 """ComfyUI nodes for editing and reading photographic prompts."""
 import json
+from datetime import datetime
 
-from .history import FIELDS, add_entries, list_photo_ids, read_photo_id
+from .history import FIELDS, MAX_TEXT_LENGTH, PHOTO_ID_PATTERN, add_entries, list_photo_ids, read_photo_id
 
 HEADINGS = {
     'subject': 'Subject',
@@ -23,6 +24,60 @@ def compose_prompt(values, enabled):
         if enabled.get(field, True) and isinstance(text, str) and text.strip():
             parts.append(f'{HEADINGS[field]}:\n{text.strip()}')
     return '\n\n'.join(parts)
+
+
+def parse_image_tags(raw):
+    """Validate one VLM response before it can enter shared history."""
+    if not isinstance(raw, str):
+        raise ValueError('tags_json must be a JSON string')
+    try:
+        values = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f'tags_json must contain one JSON object: {exc.msg}') from exc
+    if not isinstance(values, dict) or set(values) != set(FIELDS):
+        raise ValueError('tags_json must contain exactly the nine photo prompt fields')
+    if any(not isinstance(value, str) or len(value) > MAX_TEXT_LENGTH for value in values.values()):
+        raise ValueError('Each photo prompt field must be a string of at most 8000 characters')
+    values = {field: values[field].strip() for field in FIELDS}
+    if not any(values.values()):
+        raise ValueError('At least one photo prompt field must be nonempty')
+    return values
+
+
+class Krea2ImageToTextSave:
+    CATEGORY = 'prompt/photo'
+    FUNCTION = 'process'
+    RETURN_TYPES = ('STRING', 'STRING')
+    RETURN_NAMES = ('prompt', 'photo_id')
+    OUTPUT_NODE = True
+    DESCRIPTION = 'Validate nine JSON image tags and save them automatically or with a Save button.'
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {'required': {
+            'tags_json': ('STRING', {'default': '', 'multiline': True, 'dynamicPrompts': False}),
+            'save_mode': (['Auto', 'Manual'], {'default': 'Manual'}),
+            'photo_id': ('STRING', {'default': '', 'multiline': False, 'dynamicPrompts': False}),
+            'overwrite': ('BOOLEAN', {'default': False}),
+        }}
+
+    def process(self, tags_json, save_mode='Manual', photo_id='', overwrite=False):
+        values = parse_image_tags(tags_json)
+        if save_mode not in ('Auto', 'Manual'):
+            raise ValueError('save_mode must be Auto or Manual')
+        if not isinstance(photo_id, str):
+            raise ValueError('photo_id must be a string')
+        chosen_id = photo_id or datetime.now().strftime('%y%m%d%H%M%S')
+        if not PHOTO_ID_PATTERN.fullmatch(chosen_id):
+            raise ValueError('Photo ID must be 1–24 allowed ASCII characters')
+        if type(overwrite) is not bool:
+            raise ValueError('overwrite must be a boolean')
+        if save_mode == 'Auto':
+            add_entries(values, photo_id=chosen_id, overwrite=overwrite, return_state=False)
+        payload = {'entries': values, 'photo_id': chosen_id, 'overwrite': overwrite,
+                   'saved': save_mode == 'Auto'}
+        return {'ui': {'image_to_text': [payload]},
+                'result': (compose_prompt(values, {}), chosen_id)}
 
 
 class Krea2PhotoPromptBuilder:
@@ -58,6 +113,7 @@ class Krea2PhotoPromptBuilder:
 
 NODE_ID = 'MagichanLab_Krea2PhotoPromptBuilder'
 REFERENCE_NODE_ID = 'MagichanLab_Krea2PhotoPromptReference'
+IMAGE_TO_TEXT_NODE_ID = 'MagichanLab_Krea2ImageToTextSave'
 SELECT_PHOTO_ID = '(Select Photo ID)'
 
 
@@ -102,8 +158,10 @@ class Krea2PhotoPromptReference:
 NODE_CLASS_MAPPINGS = {
     NODE_ID: Krea2PhotoPromptBuilder,
     REFERENCE_NODE_ID: Krea2PhotoPromptReference,
+    IMAGE_TO_TEXT_NODE_ID: Krea2ImageToTextSave,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     NODE_ID: 'Krea2 Photo Prompt Builder',
     REFERENCE_NODE_ID: 'Krea2 Photo Prompt Reference',
+    IMAGE_TO_TEXT_NODE_ID: 'Krea2 Image to Text Save',
 }

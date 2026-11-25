@@ -31,6 +31,12 @@ The internal ComfyUI node IDs are `MagichanLab_Krea2PhotoPromptBuilder` and `Mag
 
 ## Inputs
 
+### Save nine fields from an image-to-text model
+
+**Krea2 Image to Text Save** appears under `prompt/photo`. Connect the STRING output of a vision model such as Qwen3.5 to `tags_json`. Ask the model to return exactly one JSON object with these string keys: `subject`, `appearance`, `hair_makeup`, `pose`, `expression`, `environment`, `composition`, `lighting`, and `finishing`. Use an empty string for details that cannot be determined from the image. All nine keys are required; invalid JSON, extra keys, values longer than 8000 characters, and all-empty output raise an error without saving.
+
+Choose `save_mode` = `Auto` to save during workflow execution or `Manual` to inspect the validated fields and press **Save** in the node. The `photo_id` text box can also be connected from another STRING output; leave it empty to use the execution timestamp in `yymmddHHMMSS` format, as the builder does. IDs can collide when runs occur within the same second. `overwrite` defaults to Off. Auto mode rejects conflicting existing IDs; Manual mode asks before overwriting them. The node outputs the combined `prompt` and the `photo_id`. In Manual mode, the latter is a proposed ID until Save is pressed. Saved IDs can be loaded with **Krea2 Photo Prompt Reference**. This node does not create the reference gallery thumbnail, which currently requires a generation using the builder node.
+
 **Krea2 Photo Prompt Reference**, under `prompt/photo`, has a Photo ID text box with a selection dropdown directly below it. The box shows the selected ID and filters the dropdown as you type. It reads the selected combination from shared history when executed and outputs the same labeled `prompt` (STRING) as the builder, ready for a CLIP text encoder's `text` input. It never saves or edits history. Running without a selected Photo ID, or with a deleted ID, raises an error. The dropdown refreshes when the node is added or the builder saves a Photo ID.
 
 A tag dropdown and an additional prompt input (for example, LoRA trigger words) appear side by side. Choose one of the nine sections to append the text on a new line at execution time, including sections absent from the saved combination. A blank input leaves the output unchanged. Additions are never written to shared history or Photo IDs.
