@@ -62,7 +62,7 @@ app.registerExtension({
       const result = oldCreated?.apply(this, args);
       const container = document.createElement('div');
       Object.assign(container.style, {
-        display: 'flex', flexDirection: 'column', gap: '6px', height: '100%',
+        display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', height: '100%',
         boxSizing: 'border-box', padding: '5px',
       });
       const status = document.createElement('div');
@@ -84,6 +84,18 @@ app.registerExtension({
         getMinHeight: () => 250, getHeight: () => 250,
       });
       ui.serialize = false;
+      // ComfyUI may reuse a stale widget width when redrawing after Save.
+      // Its DOM wrapper reads this value before falling back to the node width.
+      const syncWidth = () => { ui.width = this.size[0]; };
+      ui.options ??= {};
+      for (const name of ['onDraw', 'afterResize']) {
+        const previous = ui.options[name];
+        ui.options[name] = function (...callbackArgs) {
+          const callbackResult = previous?.apply(this, callbackArgs);
+          syncWidth();
+          return callbackResult;
+        };
+      }
       this.imageToTextControls = { status, preview, button };
       this.imageToTextPending = null;
       const oldExecuted = this.onExecuted;
@@ -110,6 +122,7 @@ app.registerExtension({
       const [width, height] = this.computeSize();
       this.setSize([Math.max(this.size[0], width, 360),
                     Math.max(this.size[1], height, 430)]);
+      syncWidth();
       return result;
     };
   },

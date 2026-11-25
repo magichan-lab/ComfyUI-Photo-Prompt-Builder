@@ -145,6 +145,8 @@ For the first update from an older checkout that still tracks `prompt_history.js
 
 From this repository's root: `python -m unittest discover -s tests -v`. Frontend adapter checks: `node tests/test_frontend.mjs`.
 
+For browser layout checks, run `python3 -m http.server 8000` from the repository root and open `http://localhost:8000/tests/test_frontend_layout.html`. This checks builder and reference Photo ID input widths, dropdown stacking above thumbnails, positioning at different zoom levels, Additional Prompt fields in narrow nodes, selection, and dismissal.
+
 ## Preview without ComfyUI
 
 Run `python3 -m http.server 8000` from this repository's root, then open `http://localhost:8000/preview/`. The preview loads the actual frontend JavaScript and mocks the ComfyUI node and history API in the browser. Preview history is stored in browser local storage.

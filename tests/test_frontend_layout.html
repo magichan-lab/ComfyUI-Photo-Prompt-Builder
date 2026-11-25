@@ -1,0 +1,146 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Photo ID layout regression</title>
+<style>
+  #node { width: 410px; transform-origin: top left; }
+  /* Model separate, clipped ComfyUI DOM widget stacking contexts. */
+  .widget { position: relative; transform: translateZ(0); overflow: hidden;
+    height: 36px; margin-bottom: 20px; }
+</style>
+<div id="node"></div>
+<pre id="result">RUNNING</pre>
+<script type="module">
+  const result = document.querySelector('#result');
+  try {
+    const source = await (await fetch('../web/photo_prompt_builder.js')).text();
+    let extension;
+    const ids = { 'photo-1': {}, 'photo-2': {}, 'photo-10': {} };
+    const { addPhotoControls, syncPhotoIds } = new Function('app', 'api',
+      source.replace(/^import .*;\r?\n/gm, '') + '\nreturn { addPhotoControls, syncPhotoIds };'
+    )({ registerExtension(value) { extension = value; } }, {
+      async fetchApi() { return { ok: true, json: async () => ({ photo_ids: ids }) }; },
+    });
+    const container = document.querySelector('#node');
+    const node = {
+      size: [430, 760],
+      widgets: [{ name: 'photo_id', value: '' }],
+      addDOMWidget(name, type, element, options) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'widget';
+        wrapper.append(element);
+        container.append(wrapper);
+        return { element, options };
+      },
+    };
+    addPhotoControls(node);
+    syncPhotoIds({ 'photo-1': {}, 'photo-2': {}, 'photo-10': {} });
+    const { autocomplete, input: saveInput } = node.photoControls;
+    autocomplete.setItems(['photo-1', 'photo-2', 'photo-10'], '');
+    function check(condition, message) {
+      if (!condition) throw new Error(message);
+    }
+    const near = (a, b) => Math.abs(a - b) < 1;
+    for (const width of [410, 600]) {
+      for (const scale of [1, 0.6, 1.5]) {
+        container.style.width = `${width}px`;
+        container.style.transform = `scale(${scale})`;
+        const before = [autocomplete.input, saveInput].map(el => el.getBoundingClientRect().width);
+        autocomplete.input.focus();
+        const anchor = autocomplete.input.getBoundingClientRect();
+        const popup = autocomplete.list.getBoundingClientRect();
+        const save = saveInput.getBoundingClientRect();
+        check(before.every((value, i) => near(value,
+          [anchor.width, save.width][i])), 'Opening changes input widths');
+        check(near(anchor.width, save.width), 'Search and save widths differ');
+        check(near(popup.width, anchor.width) && near(popup.left, anchor.left)
+          && near(popup.top, anchor.bottom), 'Popup does not follow scaled anchor');
+        const top = document.elementFromPoint(save.left + 10, save.top + 2);
+        check(autocomplete.list.contains(top), 'Save input covers popup');
+        autocomplete.input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+        check(!autocomplete.list.matches(':popover-open'), 'Escape leaves popup open');
+        autocomplete.input.blur();
+      }
+    }
+    autocomplete.input.focus();
+    autocomplete.list.children[1].click();
+    check(autocomplete.input.value === 'photo-2', 'Mouse selection failed');
+    check(!autocomplete.list.matches(':popover-open'), 'Selection leaves popup open');
+
+    container.replaceChildren();
+    class Reference {
+      constructor() {
+        this.size = [320, 100];
+        this.widgets = [
+          { name: 'photo_id', value: '' },
+          { name: 'additional_tag', value: 'Subject' },
+          { name: 'additional_prompt', value: '' },
+        ];
+      }
+      addDOMWidget(name, type, element, options) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'widget';
+        wrapper.style.height = `${options.getHeight() - 20}px`;
+        wrapper.append(element);
+        container.append(wrapper);
+        const widget = { name, type, element, options, wrapper, width: 140 };
+        this.widgets.push(widget);
+        return widget;
+      }
+      computeSize() { return [320, 400]; }
+      setSize(size) { this.size = size; }
+    }
+    await extension.beforeRegisterNodeDef(Reference, { name: 'MagichanLab_Krea2PhotoPromptReference' });
+    const reference = new Reference();
+    reference.onNodeCreated();
+    syncPhotoIds(ids);
+    const thumbnail = document.createElement('img');
+    thumbnail.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="blue"/></svg>';
+    thumbnail.style.cssText = 'width:100%;height:100%;object-fit:cover';
+    reference.referenceGallery.firstChild.firstChild.replaceChildren(thumbnail);
+    const search = reference.referenceAutocomplete;
+    const promptRow = reference.widgets.find(widget => widget.name === 'Additional prompt').element;
+    const [tagSelect, promptInput] = promptRow.children;
+    for (const width of [240, 320, 600]) {
+      reference.size[0] = width;
+      container.style.width = `${width}px`;
+      for (const widget of reference.widgets.filter(widget => widget.wrapper)) {
+        widget.options.afterResize.call(widget, reference);
+        check(widget.width === width, 'Widget width does not follow node resize');
+        // Simulate a stale width supplied by ComfyUI's layout, then a redraw.
+        widget.width = 140;
+        widget.options.onDraw(widget);
+        widget.wrapper.style.width = `${widget.width - 20}px`;
+      }
+      for (const scale of [0.6, 1, 1.5]) {
+        container.style.transform = `scale(${scale})`;
+        const tag = tagSelect.getBoundingClientRect();
+        const prompt = promptInput.getBoundingClientRect();
+        check(near(prompt.width, (width - 20) * scale), 'Additional prompt loses usable width');
+        check(prompt.top >= tag.bottom, 'Additional prompt overlaps tag selector');
+        for (const widget of reference.widgets.filter(widget => widget.wrapper)) {
+          const rect = widget.element.getBoundingClientRect();
+          check(near(rect.width, prompt.width) && near(rect.left, prompt.left),
+            'Reference widgets do not fill the same available width');
+        }
+        search.input.focus();
+        const popup = search.list.getBoundingClientRect();
+        const anchor = search.input.getBoundingClientRect();
+        check(near(popup.width, anchor.width) && near(popup.left, anchor.left),
+          'Reference dropdown loses width or alignment');
+        const gallery = reference.referenceGallery.getBoundingClientRect();
+        check(search.list.contains(document.elementFromPoint(gallery.left + 10, gallery.top + 2)),
+          'Thumbnail gallery covers reference dropdown');
+        search.close();
+        search.input.blur();
+      }
+    }
+    promptInput.value = 'LoRA trigger';
+    promptInput.dispatchEvent(new Event('input'));
+    check(reference.widgets.find(widget => widget.name === 'additional_prompt').value === 'LoRA trigger',
+      'Additional prompt no longer updates its backing widget');
+    reference.onRemoved();
+    result.textContent = 'PASS: builder and reference widths, dropdown stacking, zoom, narrow prompts, selection and dismissal';
+  } catch (error) {
+    result.textContent = `FAIL: ${error.stack}`;
+  }
+</script>

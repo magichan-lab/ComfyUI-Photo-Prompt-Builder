@@ -171,6 +171,8 @@ curl -fS -X POST -H 'Content-Type: application/json' --data-binary @photo-prompt
 
 リポジトリのルートから`python -m unittest discover -s tests -v`を実行します。フロントエンドのアダプター検証は`node tests/test_frontend.mjs`で実行できます。
 
+レイアウトの検証は、ルートで`python3 -m http.server 8000`を実行し、ブラウザーで`http://localhost:8000/tests/test_frontend_layout.html`を開きます。通常・参照ノードのPhoto ID欄の幅、候補リストとサムネイルの重なり順、ズーム時の位置、狭いノードでのAdditional Prompt欄、選択と閉じる操作を検証します。
+
 ## ComfyUIなしでUIを確認する
 
 このリポジトリのルートで`python3 -m http.server 8000`を実行し、ブラウザーで`http://localhost:8000/preview/`を開きます。プレビューは実際のフロントエンドJavaScriptを読み込み、ComfyUIのノードと履歴APIをブラウザー内で模擬します。履歴はブラウザーのローカルストレージに保存されます。

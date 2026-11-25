@@ -29,6 +29,27 @@ const EDITED_COLOR = '#ffd58a';
 const FIELD_WIDGET_HEIGHT = 124; // 104px of content plus the DOM widget's 10px margins.
 const photoIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
+function followNodeWidth(node, target) {
+  // ComfyUI can retain a widget.width from an earlier layout. Its DOM wrapper
+  // uses that width before falling back to the node width.
+  const syncWidth = () => { target.width = node.size[0]; };
+  target.options ??= {};
+  for (const name of ['onDraw', 'afterResize']) {
+    const previous = target.options[name];
+    target.options[name] = function (...args) {
+      const result = previous?.apply(this, args);
+      syncWidth();
+      return result;
+    };
+  }
+  syncWidth();
+  return target;
+}
+
+function addFullWidthDOMWidget(node, ...args) {
+  return followNodeWidth(node, node.addDOMWidget(...args));
+}
+
 function makePhotoIdAutocomplete(onSelect, onQuery) {
   const root = document.createElement('div');
   Object.assign(root.style, { position: 'relative', width: '100%', height: '100%', minWidth: '0' });
@@ -63,6 +84,30 @@ function makePhotoIdAutocomplete(onSelect, onQuery) {
     boxShadow: '0 6px 16px #000a',
   });
   root.append(input, toggle, list);
+  // Each ComfyUI DOM widget can have its own stacking context. A large z-index
+  // inside the search widget cannot cover the following widget; use the top layer.
+  const usePopover = typeof list.showPopover === 'function';
+  if (usePopover) {
+    list.setAttribute('popover', 'manual');
+    Object.assign(list.style, {
+      position: 'fixed', inset: 'auto', margin: '0', transformOrigin: 'top left',
+    });
+  }
+  let positionFrame;
+  function positionList() {
+    const rect = input.getBoundingClientRect();
+    const width = input.offsetWidth;
+    const scale = width ? rect.width / width : 1;
+    Object.assign(list.style, {
+      left: `${rect.left}px`, top: `${rect.bottom}px`, width: `${width}px`,
+      transform: `scale(${scale})`,
+    });
+  }
+  function trackPosition() {
+    if (!root.isConnected) { close(); return; }
+    positionList();
+    positionFrame = requestAnimationFrame(trackPosition);
+  }
   let ids = [];
   let selected = '';
   let edited = false;
@@ -82,6 +127,10 @@ function makePhotoIdAutocomplete(onSelect, onQuery) {
   const matches = () => ids.filter((id) => id.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   function close() {
     opened = false;
+    if (usePopover) {
+      cancelAnimationFrame(positionFrame);
+      if (list.matches(':popover-open')) list.hidePopover();
+    }
     list.style.display = 'none';
     input.setAttribute('aria-expanded', 'false');
   }
@@ -115,6 +164,12 @@ function makePhotoIdAutocomplete(onSelect, onQuery) {
     opened = true;
     render();
     list.style.display = 'block';
+    if (usePopover) {
+      positionList();
+      list.showPopover();
+      cancelAnimationFrame(positionFrame);
+      positionFrame = requestAnimationFrame(trackPosition);
+    }
     input.setAttribute('aria-expanded', 'true');
   }
   function choose(id) {
@@ -555,6 +610,7 @@ function addHistoryButton(node, field, label) {
   container.style.setProperty('--comfy-widget-min-height', `${FIELD_WIDGET_HEIGHT}px`);
   target.options ??= {};
   target.options.getMinHeight = () => FIELD_WIDGET_HEIGHT;
+  followNodeWidth(node, target);
   const heading = document.createElement('div');
   heading.textContent = label;
   Object.assign(heading.style, {
@@ -599,7 +655,7 @@ function addHistoryButton(node, field, label) {
     background: '#42372b', color: '#ffe0a8', borderRadius: '6px',
     fontSize: '12px',
   });
-  const statusWidget = node.addDOMWidget(`${field} connection`, 'connection_status', status, {
+  const statusWidget = addFullWidthDOMWidget(node, `${field} connection`, 'connection_status', status, {
     serialize: false, hideOnZoom: false,
     getMinHeight: () => isConnected(node, field) ? 30 : 0,
     getHeight: () => isConnected(node, field) ? 30 : 0,
@@ -756,7 +812,7 @@ function addPhotoControls(node) {
     const row = document.createElement('div');
     Object.assign(row.style, {
       display: 'flex', boxSizing: 'border-box', width: '100%', height: '100%',
-      minHeight: '36px', alignItems: 'stretch', gap: '5px',
+      minHeight: '36px', minWidth: '0', flexShrink: '0', alignItems: 'stretch', gap: '5px',
     });
     return row;
   };
@@ -765,8 +821,7 @@ function addPhotoControls(node) {
     renderPhotoIds(node, photoId);
   });
   const first = makeRow();
-  autocomplete.root.style.flex = '1 1 auto';
-  autocomplete.root.style.width = '0';
+  autocomplete.root.style.flex = '1 1 0%';
   first.append(autocomplete.root,
     makeControlButton('Rename', 'Rename selected Photo ID', () => openRenamePhotoId(node)),
     makeControlButton('Delete', 'Delete selected Photo ID', () => { void deleteSelectedPhotoId(node); }));
@@ -778,7 +833,7 @@ function addPhotoControls(node) {
   input.placeholder = 'Photo ID (blank = time)';
   input.setAttribute('aria-label', 'Photo ID for save');
   Object.assign(input.style, {
-    flex: '1 1 auto', width: '0', minWidth: '0', padding: '4px',
+    flex: '1 1 0%', width: '100%', minWidth: '0', boxSizing: 'border-box', padding: '4px',
     background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
   });
   input.addEventListener('input', () => setWidget(node, 'photo_id', input.value));
@@ -794,10 +849,10 @@ function addPhotoControls(node) {
   photoWidget.draw = () => {};
   node.photoControls = { autocomplete, input, selectedId: SELECT_ID };
   // DOM widgets reserve 10px above and below the element by default.
-  const firstWidget = node.addDOMWidget('Photo ID selection', 'photo_id_controls', first, {
+  const firstWidget = addFullWidthDOMWidget(node, 'Photo ID selection', 'photo_id_controls', first, {
     serialize: false, hideOnZoom: false, getMinHeight: () => 56, getHeight: () => 56,
   });
-  const secondWidget = node.addDOMWidget('Photo ID actions', 'photo_id_controls', second, {
+  const secondWidget = addFullWidthDOMWidget(node, 'Photo ID actions', 'photo_id_controls', second, {
     serialize: false, hideOnZoom: false, getMinHeight: () => 56, getHeight: () => 56,
   });
   firstWidget.serialize = false;
@@ -811,7 +866,8 @@ function addReferencePromptControls(node) {
   if (!tagWidget || !promptWidget) return;
   const row = document.createElement('div');
   Object.assign(row.style, {
-    display: 'flex', width: '100%', height: '100%', minHeight: '32px',
+    display: 'flex', flexDirection: 'column', width: '100%', height: '100%',
+    minWidth: '0', minHeight: '70px', flexShrink: '0',
     alignItems: 'stretch', gap: '6px', boxSizing: 'border-box',
   });
   const select = document.createElement('select');
@@ -829,12 +885,12 @@ function addReferencePromptControls(node) {
   input.setAttribute('aria-label', 'Additional prompt / LoRA trigger words');
   for (const element of [select, input]) {
     Object.assign(element.style, {
-      minWidth: '0', padding: '5px', background: '#17191c', color: '#fff',
+      width: '100%', minWidth: '0', minHeight: '32px', padding: '5px', background: '#17191c', color: '#fff',
       border: '1px solid #666', borderRadius: '6px', boxSizing: 'border-box',
     });
   }
-  select.style.flex = '0 1 145px';
-  input.style.flex = '1 1 0';
+  select.style.flex = '0 0 32px';
+  input.style.flex = '1 0 32px';
   select.addEventListener('change', () => setWidget(node, 'additional_tag', select.value));
   input.addEventListener('input', () => setWidget(node, 'additional_prompt', input.value));
   for (const target of [tagWidget, promptWidget]) {
@@ -856,9 +912,9 @@ function addReferencePromptControls(node) {
   }
   sync();
   row.append(select, input);
-  const control = node.addDOMWidget('Additional prompt', 'additional_prompt_controls', row, {
+  const control = addFullWidthDOMWidget(node, 'Additional prompt', 'additional_prompt_controls', row, {
     serialize: false, hideOnZoom: false,
-    getMinHeight: () => 52, getHeight: () => 52,
+    getMinHeight: () => 90, getHeight: () => 90,
   });
   control.serialize = false;
   return sync;
@@ -914,7 +970,7 @@ app.registerExtension({
           () => renderReferenceGallery(this));
         this.referenceAutocomplete = autocomplete;
         autocomplete.setSelected(photoWidget?.value ?? SELECT_ID);
-        const searchWidget = this.addDOMWidget('Photo ID selection', 'photo_id_search', autocomplete.root, {
+        const searchWidget = addFullWidthDOMWidget(this, 'Photo ID selection', 'photo_id_search', autocomplete.root, {
           serialize: false, hideOnZoom: false,
           getMinHeight: () => 54, getHeight: () => 54,
         });
@@ -929,7 +985,7 @@ app.registerExtension({
           border: '1px solid #555', borderRadius: '6px',
         });
         this.referenceGallery = gallery;
-        const galleryWidget = this.addDOMWidget('Photo ID examples', 'photo_id_gallery', gallery, {
+        const galleryWidget = addFullWidthDOMWidget(this, 'Photo ID examples', 'photo_id_gallery', gallery, {
           serialize: false, hideOnZoom: false,
           getMinHeight: () => 190, getHeight: () => 190,
         });
@@ -940,6 +996,7 @@ app.registerExtension({
                       Math.max(this.size[1], height, 260)]);
         const oldRemoved = this.onRemoved;
         this.onRemoved = function (...removeArgs) {
+          this.referenceAutocomplete?.close();
           referenceNodes.delete(this);
           return oldRemoved?.apply(this, removeArgs);
         };
@@ -963,6 +1020,7 @@ app.registerExtension({
       nodes.add(this);
       const oldRemoved = this.onRemoved;
       this.onRemoved = function (...removeArgs) {
+        this.photoControls?.autocomplete.close();
         nodes.delete(this);
         return oldRemoved?.apply(this, removeArgs);
       };
