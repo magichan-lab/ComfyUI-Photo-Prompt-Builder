@@ -19,7 +19,7 @@ No pip dependencies beyond ComfyUI's own `aiohttp` are required.
 
 ## Comfy Registry publishing
 
-The repository includes `pyproject.toml` metadata and a `.comfyignore` release filter. The Registry package name is `photo-prompt-builder` (distinct from the internal node IDs). The current prerelease version is `1.0.0RC3`.
+The repository includes `pyproject.toml` metadata and a `.comfyignore` release filter. The Registry package name is `photo-prompt-builder` (distinct from the internal node IDs). The current prerelease version is `1.0.0RC4`.
 
 1. Use the `magichan` publisher at [Comfy Registry](https://registry.comfy.org/). The same ID is set in `[tool.comfy].PublisherId` in `pyproject.toml`.
 2. Review the version and metadata in `pyproject.toml`. Increment `version` for each later release; a published version cannot be changed.
