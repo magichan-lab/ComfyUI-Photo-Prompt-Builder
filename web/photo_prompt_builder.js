@@ -17,6 +17,7 @@ const FIELDS = [
 const PATH = '/magichanlab_photo_prompt/history';
 const PHOTO_ID_PATH = '/magichanlab_photo_prompt/photo_id';
 const cache = { photo_ids: {}, images: {} };
+let photoIdsLoaded = false;
 const nodes = new Set();
 const referenceNodes = new Set();
 const PHOTO_ID_RE = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
@@ -25,9 +26,10 @@ const EDITED_SUFFIX = ' [Edited]';
 const EDITED_COLOR = '#ffd58a';
 const photoIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
-function renderPhotoIds(node, selectedId = node.photoControls.select.value) {
+function renderPhotoIds(node, selectedId = node.photoControls.selectedId) {
   const { search, select } = node.photoControls;
-  const query = search.value.trim().toLocaleLowerCase();
+  node.photoControls.selectedId = selectedId;
+  const query = node.photoControls.query.trim().toLocaleLowerCase();
   const values = Object.keys(cache.photo_ids)
     .filter((id) => id.toLocaleLowerCase().includes(query))
     .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
@@ -45,18 +47,20 @@ function renderPhotoIds(node, selectedId = node.photoControls.select.value) {
 function updatePhotoIdEdited(node) {
   const select = node.photoControls?.select;
   if (!select) return;
-  const photoId = select.value;
+  const photoId = node.photoControls.selectedId;
   const saved = cache.photo_ids[photoId];
   const edited = !!saved && FIELDS.some(([field]) =>
     (isConnected(node, field) ? '' : String(widget(node, field)?.value ?? '')) !== (saved[field] ?? ''));
   const option = [...select.children].find((item) => item.value === photoId);
   if (option) option.textContent = edited ? `${photoId}${EDITED_SUFFIX}` : photoId;
   select.style.color = edited ? EDITED_COLOR : '#fff';
+  node.photoControls.search.style.color = edited ? EDITED_COLOR : '#fff';
   select.title = edited ? `${photoId}${EDITED_SUFFIX}` : 'Select Photo ID';
 }
 
 function syncPhotoIds(photoIds) {
   cache.photo_ids = photoIds;
+  photoIdsLoaded = true;
   for (const node of nodes) {
     if (node.photoControls) renderPhotoIds(node);
   }
@@ -102,7 +106,7 @@ function markReferenceSelection(node) {
 }
 
 function referenceIds(node) {
-  const query = node.referenceSearch?.value.trim().toLocaleLowerCase() ?? '';
+  const query = node.referenceQuery?.trim().toLocaleLowerCase() ?? '';
   return Object.keys(cache.photo_ids)
     .filter((id) => id.toLocaleLowerCase().includes(query))
     .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
@@ -149,14 +153,13 @@ function renderReferenceGallery(node) {
     button.addEventListener('click', () => {
       const photoWidget = widget(node, 'photo_id');
       if (!photoWidget) return;
-      photoWidget.value = photoId;
-      photoWidget.callback?.(photoId);
+      setWidget(node, 'photo_id', photoId);
       markReferenceSelection(node);
       node.setDirtyCanvas?.(true, true);
     });
     gallery.append(button);
   }
-  if (!ids.length) gallery.textContent = node.referenceSearch?.value.trim()
+  if (!ids.length) gallery.textContent = node.referenceQuery?.trim()
     ? 'No matching Photo IDs' : 'No saved Photo IDs';
   markReferenceSelection(node);
 }
@@ -165,9 +168,18 @@ function refreshReferencePhotoIds(node) {
   const photoWidget = widget(node, 'photo_id');
   if (!photoWidget) return;
   const ids = referenceIds(node);
-  photoWidget.options ??= {};
-  photoWidget.options.values = [SELECT_ID, ...ids];
-  if (!Object.hasOwn(cache.photo_ids, photoWidget.value)) photoWidget.value = SELECT_ID;
+  if (photoIdsLoaded && !Object.hasOwn(cache.photo_ids, photoWidget.value)) photoWidget.value = SELECT_ID;
+  const select = node.referenceSelect;
+  if (select) {
+    select.replaceChildren(...[SELECT_ID, ...ids].map((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      return option;
+    }));
+    select.value = ids.includes(photoWidget.value) ? photoWidget.value : SELECT_ID;
+    if (!node.referenceQuery) node.referenceSearch.value = photoWidget.value === SELECT_ID ? '' : photoWidget.value;
+  }
   renderReferenceGallery(node);
   node.setDirtyCanvas?.(true, true);
 }
@@ -493,7 +505,7 @@ function preview(node) {
 }
 
 function selectedPhotoId(node) {
-  const photoId = node.photoControls?.select.value;
+  const photoId = node.photoControls?.selectedId;
   return photoId && Object.hasOwn(cache.photo_ids, photoId) ? photoId : null;
 }
 
@@ -517,7 +529,8 @@ async function saveCurrent(node) {
       result = await request(PATH, { ...payload, photo_id: error.photoId, overwrite: true });
     }
     if (node.photoControls) {
-      node.photoControls.search.value = '';
+      node.photoControls.query = '';
+      node.photoControls.search.value = result.saved_photo_id;
       renderPhotoIds(node, result.saved_photo_id);
     }
     setWidget(node, 'photo_id', result.saved_photo_id);
@@ -553,11 +566,12 @@ function openRenamePhotoId(node) {
         return;
       }
       try {
-        const affected = [...nodes].filter((item) => item.photoControls?.select.value === oldId);
+        const affected = [...nodes].filter((item) => item.photoControls?.selectedId === oldId);
         const inputs = [...nodes].filter((item) => widget(item, 'photo_id')?.value === oldId);
         await request(`${PHOTO_ID_PATH}/rename`, { old_id: oldId, new_id: newId });
         for (const item of affected) {
-          item.photoControls.search.value = '';
+          item.photoControls.query = '';
+          item.photoControls.search.value = newId;
           renderPhotoIds(item, newId);
         }
         for (const item of inputs) setWidget(item, 'photo_id', newId);
@@ -578,6 +592,12 @@ async function deleteSelectedPhotoId(node) {
     const inputs = [...nodes].filter((item) => widget(item, 'photo_id')?.value === photoId);
     await request(`${PHOTO_ID_PATH}/delete`, { photo_id: photoId });
     for (const item of inputs) setWidget(item, 'photo_id', '');
+    for (const item of nodes) {
+      if (item.photoControls?.selectedId !== photoId) continue;
+      item.photoControls.query = '';
+      item.photoControls.search.value = '';
+      renderPhotoIds(item, SELECT_ID);
+    }
     // syncPhotoIds resets the selection; section text widgets stay untouched.
   } catch (error) { notify(`Cannot delete Photo ID: ${error.message}`); }
 }
@@ -613,7 +633,12 @@ function addPhotoControls(node) {
     flex: '1 1 auto', width: '0', minWidth: '0', padding: '4px',
     background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
   });
-  select.addEventListener('change', () => applyPhotoId(node, select.value));
+  select.addEventListener('change', () => {
+    node.photoControls.query = '';
+    search.value = select.value === SELECT_ID ? '' : select.value;
+    applyPhotoId(node, select.value);
+    renderPhotoIds(node, select.value);
+  });
   const search = document.createElement('input');
   search.type = 'search';
   search.placeholder = 'Search ID';
@@ -622,11 +647,22 @@ function addPhotoControls(node) {
     flex: '1 1 auto', width: '0', minWidth: '0', padding: '4px',
     background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
   });
-  search.addEventListener('input', () => renderPhotoIds(node));
+  search.addEventListener('input', () => {
+    node.photoControls.query = search.value;
+    renderPhotoIds(node);
+  });
   const first = makeRow();
-  first.append(search, select,
+  first.style.flexDirection = 'column';
+  first.style.minHeight = '72px';
+  search.style.width = '100%';
+  search.style.flex = '1 1 0';
+  const selectionRow = makeRow();
+  selectionRow.style.minHeight = '0';
+  selectionRow.style.flex = '1 1 0';
+  selectionRow.append(select,
     makeControlButton('Rename', 'Rename selected Photo ID', () => openRenamePhotoId(node)),
     makeControlButton('Delete', 'Delete selected Photo ID', () => { void deleteSelectedPhotoId(node); }));
+  first.append(search, selectionRow);
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -649,15 +685,17 @@ function addPhotoControls(node) {
   photoWidget.options.hidden = true;
   photoWidget.computeSize = () => [0, -4];
   photoWidget.draw = () => {};
-  node.photoControls = { search, select, input };
+  node.photoControls = { search, select, input, query: '', selectedId: SELECT_ID };
   // DOM widgets reserve 10px above and below the element by default.
-  const options = { serialize: false, hideOnZoom: false,
-    getMinHeight: () => 56, getHeight: () => 56 };
-  const firstWidget = node.addDOMWidget('Photo ID selection', 'photo_id_controls', first, options);
-  const secondWidget = node.addDOMWidget('Photo ID actions', 'photo_id_controls', second, options);
+  const firstWidget = node.addDOMWidget('Photo ID selection', 'photo_id_controls', first, {
+    serialize: false, hideOnZoom: false, getMinHeight: () => 92, getHeight: () => 92,
+  });
+  const secondWidget = node.addDOMWidget('Photo ID actions', 'photo_id_controls', second, {
+    serialize: false, hideOnZoom: false, getMinHeight: () => 56, getHeight: () => 56,
+  });
   firstWidget.serialize = false;
   secondWidget.serialize = false;
-  syncPhotoIds(cache.photo_ids);
+  renderPhotoIds(node);
 }
 
 function addReferencePromptControls(node) {
@@ -744,29 +782,60 @@ app.registerExtension({
         const syncAdditionalPrompt = addReferencePromptControls(this);
         const photoWidget = widget(this, 'photo_id');
         if (photoWidget) {
+          photoWidget.type = 'hidden';
+          photoWidget.options ??= {};
+          photoWidget.options.hidden = true;
+          photoWidget.computeSize = () => [0, -4];
+          photoWidget.draw = () => {};
           const oldCallback = photoWidget.callback;
           photoWidget.callback = (...callbackArgs) => {
             const callbackResult = oldCallback?.apply(photoWidget, callbackArgs);
+            if (this.referenceSearch) {
+              this.referenceQuery = '';
+              this.referenceSearch.value = photoWidget.value === SELECT_ID ? '' : photoWidget.value;
+              refreshReferencePhotoIds(this);
+            }
             markReferenceSelection(this);
             return callbackResult;
           };
         }
+        const selection = document.createElement('div');
+        Object.assign(selection.style, {
+          display: 'flex', flexDirection: 'column', width: '100%', height: '100%',
+          boxSizing: 'border-box', gap: '5px',
+        });
         const search = document.createElement('input');
         search.type = 'search';
         search.placeholder = 'Search Photo ID';
         search.setAttribute('aria-label', 'Search Photo ID');
         Object.assign(search.style, {
-          boxSizing: 'border-box', width: '100%', height: '100%', padding: '5px',
+          boxSizing: 'border-box', width: '100%', flex: '1 1 0', minHeight: '0', padding: '5px',
           background: '#17191c', color: '#fff', border: '1px solid #666',
           borderRadius: '6px',
         });
         this.referenceSearch = search;
-        search.addEventListener('input', () => refreshReferencePhotoIds(this));
-        const searchWidget = this.addDOMWidget('Search Photo ID', 'photo_id_search', search, {
+        this.referenceQuery = '';
+        search.value = photoWidget?.value === SELECT_ID ? '' : String(photoWidget?.value ?? '');
+        search.addEventListener('input', () => {
+          this.referenceQuery = search.value;
+          refreshReferencePhotoIds(this);
+        });
+        const select = document.createElement('select');
+        select.setAttribute('aria-label', 'Select Photo ID');
+        select.title = 'Select Photo ID';
+        Object.assign(select.style, {
+          boxSizing: 'border-box', width: '100%', flex: '1 1 0', minHeight: '0', padding: '5px',
+          background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
+        });
+        this.referenceSelect = select;
+        select.addEventListener('change', () => setWidget(this, 'photo_id', select.value));
+        selection.append(search, select);
+        const searchWidget = this.addDOMWidget('Photo ID selection', 'photo_id_search', selection, {
           serialize: false, hideOnZoom: false,
-          getMinHeight: () => 30, getHeight: () => 30,
+          getMinHeight: () => 90, getHeight: () => 90,
         });
         searchWidget.serialize = false;
+        refreshReferencePhotoIds(this);
         const gallery = document.createElement('div');
         gallery.setAttribute('aria-label', 'Photo ID examples');
         Object.assign(gallery.style, {
@@ -794,7 +863,8 @@ app.registerExtension({
         this.onConfigure = function (...configureArgs) {
           const configured = oldConfigure?.apply(this, configureArgs);
           syncAdditionalPrompt?.();
-          markReferenceSelection(this);
+          this.referenceQuery = '';
+          refreshReferencePhotoIds(this);
           return configured;
         };
         void request(`${PATH}?include_history=0`).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
@@ -835,7 +905,12 @@ app.registerExtension({
           if (photoWidget) photoWidget.value = String(restoredPhotoId ?? '');
         }
         if (this.photoControls) {
-          this.photoControls.input.value = String(widget(this, 'photo_id')?.value ?? '');
+          const photoId = String(widget(this, 'photo_id')?.value ?? '');
+          this.photoControls.input.value = photoId;
+          this.photoControls.selectedId = photoId;
+          this.photoControls.query = '';
+          this.photoControls.search.value = photoId;
+          renderPhotoIds(this);
         }
         syncConnections(this);
         return configured;

@@ -10,6 +10,7 @@ class Element {
     this.value = '';
     this.children = [];
     this.listeners = {};
+    this.dataset = {};
   }
   append(...children) {
     children.forEach(child => { child.parent = this; });
@@ -19,6 +20,7 @@ class Element {
   remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
   setAttribute() {}
   addEventListener(name, callback) { this.listeners[name] = callback; }
+  querySelectorAll(tag) { return this.children.filter(child => child.tag === tag); }
 }
 class TextAreaElement extends Element {}
 const body = new Element('body');
@@ -197,8 +199,11 @@ console.log('PASS: completed prompt triggers thumbnail save with its prompt ID')
 
 const { syncPhotoIds } = vm.runInContext('({syncPhotoIds})', context);
 syncPhotoIds({ 'photo-1': { subject: 'Original' }, 'photo-2': { subject: 'Other' } });
+assert.equal(node.photoControls.search.parent.children[1].children[0], node.photoControls.select);
+assert.equal(node.widgets.find(item => item.name === 'Photo ID selection').options.getHeight(), 92);
 node.photoControls.select.value = 'photo-1';
 node.photoControls.select.listeners.change();
+assert.equal(node.photoControls.search.value, 'photo-1');
 const selectedOption = () => node.photoControls.select.children.find(option => option.value === 'photo-1');
 assert.equal(node.widgets[0].value, 'Original');
 assert.equal(selectedOption().textContent, 'photo-1');
@@ -223,3 +228,40 @@ await saveCurrent(node);
 assert.equal(selectedOption().textContent, 'photo-1');
 assert.equal(node.photoControls.select.style.color, '#fff');
 console.log('PASS: selected Photo ID marks edits and clears after revert, save, or selection');
+
+class Reference {
+  constructor() {
+    this.widgets = [
+      { name: 'photo_id', value: '(Select Photo ID)' },
+      { name: 'additional_tag', value: 'Subject' },
+      { name: 'additional_prompt', value: '' },
+    ];
+    this.size = [320, 100];
+  }
+  addDOMWidget(name, type, element, options) {
+    const widget = { name, type, element, options };
+    this.widgets.push(widget);
+    return widget;
+  }
+  computeSize() {
+    return [320, 60 + this.widgets.reduce((height, item) =>
+      height + (item.options?.getHeight?.() ?? 0), 0)];
+  }
+  setSize(size) { this.size = size; }
+}
+await extension.beforeRegisterNodeDef(Reference, { name: 'MagichanLab_Krea2PhotoPromptReference' });
+const reference = new Reference();
+reference.onNodeCreated();
+syncPhotoIds({ 'photo-1': { subject: 'Original' }, 'photo-2': { subject: 'Other' } });
+assert.equal(reference.widgets[0].type, 'hidden');
+assert.equal(reference.referenceSearch.parent.children[1], reference.referenceSelect);
+assert.ok(reference.size[1] >= reference.computeSize()[1]);
+reference.referenceSelect.value = 'photo-2';
+reference.referenceSelect.listeners.change();
+assert.equal(reference.widgets[0].value, 'photo-2');
+assert.equal(reference.referenceSearch.value, 'photo-2');
+reference.referenceSearch.value = 'PHOTO-1';
+reference.referenceSearch.listeners.input();
+assert.equal(reference.widgets[0].value, 'photo-2');
+assert.equal(reference.referenceSelect.children.length, 2);
+console.log('PASS: reference Photo ID selection, search, and node height');
