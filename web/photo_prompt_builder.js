@@ -380,12 +380,24 @@ function addHistoryButton(node, field, label) {
   const textarea = target?.element ?? target?.inputEl;
   if (!(textarea instanceof HTMLTextAreaElement)) return;
 
+  const container = document.createElement('div');
+  Object.assign(container.style, {
+    display: 'flex', flexDirection: 'column', width: '100%', height: '100%',
+    minHeight: '104px', gap: '4px', boxSizing: 'border-box',
+  });
+  container.style.setProperty('--comfy-widget-min-height', '104px');
+  const heading = document.createElement('div');
+  heading.textContent = label;
+  Object.assign(heading.style, {
+    flex: '0 0 20px', lineHeight: '20px', fontSize: '12px', fontWeight: '600',
+    color: '#ddd',
+  });
+  textarea.setAttribute('aria-label', label);
   const row = document.createElement('div');
   Object.assign(row.style, {
-    display: 'flex', width: '100%', height: '100%', alignItems: 'stretch', gap: '6px',
-    boxSizing: 'border-box', minHeight: '50px',
+    display: 'flex', flex: '1 1 auto', width: '100%', alignItems: 'stretch', gap: '6px',
+    boxSizing: 'border-box', minHeight: '80px',
   });
-  row.style.setProperty('--comfy-widget-min-height', '80px');
   Object.assign(textarea.style, {
     flex: '1 1 auto', width: '0', height: '100%', minWidth: '0', boxSizing: 'border-box',
   });
@@ -402,7 +414,8 @@ function addHistoryButton(node, field, label) {
     if (!isConnected(node, field)) void openHistory(node, field, label);
   });
   row.append(textarea, button);
-  target.element = row;
+  container.append(heading, row);
+  target.element = container;
   const status = document.createElement('div');
   status.textContent = `${label}: Exclude — external node connected / 外部ノード接続中`;
   Object.assign(status.style, {

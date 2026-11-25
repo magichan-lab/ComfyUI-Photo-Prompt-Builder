@@ -71,7 +71,11 @@ class Builder {
     this.widgets.push(widget);
     return widget;
   }
-  computeSize() { return [430, 760 + this.inputs.filter(input => input.link != null).length * 30]; }
+  computeSize() {
+    const labelHeight = this.widgets.slice(0, fields.length).reduce((height, widget) =>
+      height + Math.max(0, parseInt(widget.element.style['--comfy-widget-min-height'] || '80', 10) - 80), 0);
+    return [430, 760 + labelHeight + this.inputs.filter(input => input.link != null).length * 30];
+  }
   setSize(size) { this.size = size; }
 }
 await extension.beforeRegisterNodeDef(Builder, { name: 'MagichanLab_Krea2PhotoPromptBuilder' });
@@ -96,6 +100,13 @@ assert.ok(calls[0].path.endsWith('?include_history=0'));
 console.log('PASS: legacy workflow Photo ID restoration and current serialization');
 
 const subjectControl = node.connectionControls.subject;
+for (const [index, [, label]] of fields.entries()) {
+  const fieldWidget = node.widgets[index];
+  assert.equal(fieldWidget.element.children[0].textContent, label);
+  assert.equal(fieldWidget.element.children[1].children[0], node.connectionControls[fields[index][0]].textarea);
+  assert.equal(fieldWidget.element.style['--comfy-widget-min-height'], '104px');
+}
+assert.equal(node.size[1], 976);
 assert.equal(subjectControl.textarea.disabled, false);
 node.inputs[0].link = 42;
 node.onConnectionsChange();
@@ -104,7 +115,7 @@ assert.equal(subjectControl.textarea.disabled, true);
 assert.equal(subjectControl.button.disabled, true);
 assert.match(subjectControl.status.textContent, /外部ノード接続中/);
 assert.equal(subjectControl.status.style.display, 'block');
-assert.equal(node.size[1], 790);
+assert.equal(node.size[1], 1006);
 node.widgets[0].value = 'Stale local value';
 assert.equal(compose(node), '');
 await saveCurrent(node);
