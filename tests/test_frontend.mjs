@@ -21,6 +21,8 @@ class Element {
   setAttribute() {}
   addEventListener(name, callback) { this.listeners[name] = callback; }
   querySelectorAll(tag) { return this.children.filter(child => child.tag === tag); }
+  contains(target) { return this === target || this.children.some(child => child.contains?.(target)); }
+  focus() { documentMock.activeElement = this; this.listeners.focus?.(); }
 }
 class TextAreaElement extends Element {}
 const body = new Element('body');
@@ -29,12 +31,14 @@ const events = new Map();
 let thumbnailAttempts = 0;
 const entries = Array.from({ length: 205 }, (_, i) => `Entry ${i}`);
 let extension;
+const documentMock = { body, activeElement: null,
+  createElement: tag => tag === 'textarea' ? new TextAreaElement(tag) : new Element(tag) };
 const context = vm.createContext({
   URLSearchParams,
   setTimeout,
   HTMLTextAreaElement: TextAreaElement,
   queueMicrotask,
-  document: { body, createElement: tag => tag === 'textarea' ? new TextAreaElement(tag) : new Element(tag) },
+  document: documentMock,
   window: { confirm: () => true, addEventListener() {} },
   app: { registerExtension(value) { extension = value; } },
   api: { addEventListener(name, callback) { events.set(name, callback); }, async fetchApi(path, options) {
@@ -202,35 +206,60 @@ console.log('PASS: completed prompt triggers thumbnail save with its prompt ID')
 
 const { syncPhotoIds } = vm.runInContext('({syncPhotoIds})', context);
 syncPhotoIds({ 'photo-1': { subject: 'Original' }, 'photo-2': { subject: 'Other' } });
-assert.equal(node.photoControls.search.parent.children[1].children[0], node.photoControls.select);
-assert.equal(node.widgets.find(item => item.name === 'Photo ID selection').options.getHeight(), 92);
-node.photoControls.select.value = 'photo-1';
-node.photoControls.select.listeners.change();
-assert.equal(node.photoControls.search.value, 'photo-1');
-const selectedOption = () => node.photoControls.select.children.find(option => option.value === 'photo-1');
+const builderAutocomplete = node.photoControls.autocomplete;
+assert.equal(builderAutocomplete.root.children[0], builderAutocomplete.input);
+assert.equal(node.widgets.find(item => item.name === 'Photo ID selection').options.getHeight(), 56);
+builderAutocomplete.input.focus();
+assert.equal(builderAutocomplete.list.style.display, 'block');
+builderAutocomplete.list.children.find(item => item.textContent.startsWith('photo-1')).listeners.click();
+assert.equal(builderAutocomplete.input.value, 'photo-1');
+assert.equal(builderAutocomplete.input.style.color, '#8fd4ff');
+assert.equal(builderAutocomplete.list.style.display, 'none');
+const selectedOption = () => {
+  builderAutocomplete.input.focus();
+  return builderAutocomplete.list.children.find(option => option.textContent.startsWith('photo-1'));
+};
 assert.equal(node.widgets[0].value, 'Original');
 assert.equal(selectedOption().textContent, 'photo-1');
 node.widgets[0].value = 'Changed';
 subjectControl.textarea.listeners.input();
 assert.equal(selectedOption().textContent, 'photo-1 [Edited]');
-assert.equal(node.photoControls.select.value, 'photo-1');
+assert.equal(node.photoControls.selectedId, 'photo-1');
 assert.equal(photoWidget.value, 'photo-1');
-assert.equal(node.photoControls.select.style.color, '#ffd58a');
+assert.equal(builderAutocomplete.input.style.color, '#ffd58a');
+assert.equal(builderAutocomplete.input.value, 'photo-1 [Edited]');
 node.widgets[0].value = 'Original';
 node.widgets[0].callback('Original');
 assert.equal(selectedOption().textContent, 'photo-1');
-node.photoControls.select.value = 'photo-2';
-node.photoControls.select.listeners.change();
+assert.equal(builderAutocomplete.input.value, 'photo-1');
+assert.equal(builderAutocomplete.input.style.color, '#8fd4ff');
+builderAutocomplete.list.children.find(item => item.textContent === 'photo-2').listeners.click();
 assert.equal(node.widgets[0].value, 'Other');
-assert.equal(node.photoControls.select.children.find(option => option.value === 'photo-2').textContent, 'photo-2');
-node.photoControls.select.value = 'photo-1';
-node.photoControls.select.listeners.change();
+assert.equal(builderAutocomplete.input.value, 'photo-2');
+selectedOption().listeners.click();
 node.widgets[0].value = 'Changed again';
 subjectControl.textarea.listeners.input();
 await saveCurrent(node);
 assert.equal(selectedOption().textContent, 'photo-1');
-assert.equal(node.photoControls.select.style.color, '#fff');
+assert.equal(builderAutocomplete.input.style.color, '#8fd4ff');
+assert.equal(builderAutocomplete.input.value, 'photo-1');
 console.log('PASS: selected Photo ID marks edits and clears after revert, save, or selection');
+syncPhotoIds({ 'photo-1': { subject: 'Original' }, 'photo-2': { subject: 'Other' } });
+builderAutocomplete.input.value = 'PHOTO-2';
+builderAutocomplete.input.listeners.input();
+assert.equal(builderAutocomplete.list.children.length, 1);
+assert.equal(node.photoControls.selectedId, 'photo-1');
+assert.equal(builderAutocomplete.input.style.color, '#b9c3d0');
+builderAutocomplete.input.listeners.keydown({ key: 'ArrowDown', preventDefault() {} });
+builderAutocomplete.input.listeners.keydown({ key: 'Enter', preventDefault() {} });
+assert.equal(node.photoControls.selectedId, 'photo-2');
+assert.equal(builderAutocomplete.input.value, 'photo-2');
+assert.equal(builderAutocomplete.input.style.color, '#8fd4ff');
+assert.equal(builderAutocomplete.list.style.display, 'none');
+builderAutocomplete.input.focus();
+builderAutocomplete.input.listeners.keydown({ key: 'Escape' });
+assert.equal(builderAutocomplete.list.style.display, 'none');
+console.log('PASS: autocomplete keyboard selection and dismissal');
 
 class Reference {
   constructor() {
@@ -257,14 +286,17 @@ const reference = new Reference();
 reference.onNodeCreated();
 syncPhotoIds({ 'photo-1': { subject: 'Original' }, 'photo-2': { subject: 'Other' } });
 assert.equal(reference.widgets[0].type, 'hidden');
-assert.equal(reference.referenceSearch.parent.children[1], reference.referenceSelect);
+assert.equal(reference.referenceAutocomplete.root.children[0], reference.referenceAutocomplete.input);
 assert.ok(reference.size[1] >= reference.computeSize()[1]);
-reference.referenceSelect.value = 'photo-2';
-reference.referenceSelect.listeners.change();
+assert.equal(reference.referenceAutocomplete.input.style.color, '#b9c3d0');
+reference.referenceAutocomplete.input.focus();
+reference.referenceAutocomplete.list.children.find(item => item.textContent === 'photo-2').listeners.click();
 assert.equal(reference.widgets[0].value, 'photo-2');
-assert.equal(reference.referenceSearch.value, 'photo-2');
-reference.referenceSearch.value = 'PHOTO-1';
-reference.referenceSearch.listeners.input();
+assert.equal(reference.referenceAutocomplete.input.value, 'photo-2');
+assert.equal(reference.referenceAutocomplete.input.style.color, '#8fd4ff');
+reference.referenceAutocomplete.input.value = 'PHOTO-1';
+reference.referenceAutocomplete.input.listeners.input();
 assert.equal(reference.widgets[0].value, 'photo-2');
-assert.equal(reference.referenceSelect.children.length, 2);
+assert.equal(reference.referenceAutocomplete.input.style.color, '#b9c3d0');
+assert.equal(reference.referenceAutocomplete.list.children.length, 1);
 console.log('PASS: reference Photo ID selection, search, and node height');

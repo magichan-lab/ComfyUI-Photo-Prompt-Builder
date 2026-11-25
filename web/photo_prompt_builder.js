@@ -23,40 +23,184 @@ const referenceNodes = new Set();
 const PHOTO_ID_RE = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
 const SELECT_ID = '(Select Photo ID)';
 const EDITED_SUFFIX = ' [Edited]';
+const SEARCH_COLOR = '#b9c3d0';
+const SELECTED_COLOR = '#8fd4ff';
 const EDITED_COLOR = '#ffd58a';
 const FIELD_WIDGET_HEIGHT = 124; // 104px of content plus the DOM widget's 10px margins.
 const photoIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
+function makePhotoIdAutocomplete(onSelect, onQuery) {
+  const root = document.createElement('div');
+  Object.assign(root.style, { position: 'relative', width: '100%', height: '100%', minWidth: '0' });
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Search Photo ID';
+  input.setAttribute('aria-label', 'Search or select Photo ID');
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
+  Object.assign(input.style, {
+    boxSizing: 'border-box', width: '100%', height: '100%', minHeight: '32px',
+    padding: '5px 30px 5px 6px', background: '#17191c', color: SEARCH_COLOR,
+    border: '1px solid #666', borderRadius: '6px',
+  });
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.textContent = '▾';
+  toggle.title = 'Show Photo IDs';
+  toggle.setAttribute('aria-label', 'Show Photo IDs');
+  Object.assign(toggle.style, {
+    position: 'absolute', right: '1px', top: '1px', height: 'calc(100% - 2px)',
+    width: '28px', padding: '0', background: 'transparent', color: '#ddd',
+    border: '0', cursor: 'pointer',
+  });
+  const list = document.createElement('div');
+  list.setAttribute('role', 'listbox');
+  Object.assign(list.style, {
+    display: 'none', position: 'absolute', left: '0', right: '0', top: '100%',
+    zIndex: '10000', maxHeight: '180px', overflowY: 'auto', boxSizing: 'border-box',
+    background: '#17191c', border: '1px solid #666', borderRadius: '6px',
+    boxShadow: '0 6px 16px #000a',
+  });
+  root.append(input, toggle, list);
+  let ids = [];
+  let selected = '';
+  let edited = false;
+  let query = '';
+  let searching = false;
+  let active = -1;
+  let opened = false;
+  function updateInput() {
+    const hasSelection = selected && selected !== SELECT_ID && ids.includes(selected);
+    input.style.color = searching || !hasSelection ? SEARCH_COLOR
+      : edited ? EDITED_COLOR : SELECTED_COLOR;
+    if (!searching) input.value = hasSelection
+      ? `${selected}${edited ? EDITED_SUFFIX : ''}` : '';
+    input.title = !searching && hasSelection && edited
+      ? `${selected}${EDITED_SUFFIX}` : 'Search or select Photo ID';
+  }
+  const matches = () => ids.filter((id) => id.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  function close() {
+    opened = false;
+    list.style.display = 'none';
+    input.setAttribute('aria-expanded', 'false');
+  }
+  function render() {
+    const values = matches();
+    list.replaceChildren();
+    for (const [index, id] of values.entries()) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', String(id === selected));
+      item.textContent = id === selected && edited ? `${id}${EDITED_SUFFIX}` : id;
+      Object.assign(item.style, {
+        display: 'block', width: '100%', padding: '6px 8px', textAlign: 'left',
+        border: '0', background: index === active ? '#30445e' : '#17191c',
+        color: id === selected && edited ? EDITED_COLOR : '#fff', cursor: 'pointer',
+      });
+      item.addEventListener('mousedown', (event) => event.preventDefault());
+      item.addEventListener('click', () => choose(id));
+      list.append(item);
+    }
+    if (!values.length) {
+      const empty = document.createElement('div');
+      empty.textContent = query ? 'No matching Photo IDs' : 'No saved Photo IDs';
+      Object.assign(empty.style, { padding: '6px 8px', color: '#aaa' });
+      list.append(empty);
+    }
+  }
+  function open() {
+    active = -1;
+    opened = true;
+    render();
+    list.style.display = 'block';
+    input.setAttribute('aria-expanded', 'true');
+  }
+  function choose(id) {
+    selected = id;
+    query = '';
+    searching = false;
+    edited = false;
+    updateInput();
+    close();
+    onSelect(id);
+    onQuery?.('');
+  }
+  input.addEventListener('focus', () => {
+    if (edited && !searching) input.select?.();
+    open();
+  });
+  input.addEventListener('input', () => {
+    query = input.value;
+    searching = true;
+    updateInput();
+    active = -1;
+    if (!opened) open(); else render();
+    onQuery?.(query);
+  });
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { close(); return; }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (!opened) open();
+      const count = matches().length;
+      if (!count) return;
+      active = (active + (event.key === 'ArrowDown' ? 1 : -1) + count) % count;
+      render();
+      list.children[active]?.scrollIntoView?.({ block: 'nearest' });
+    } else if (event.key === 'Enter' && opened && active >= 0) {
+      event.preventDefault();
+      choose(matches()[active]);
+    }
+  });
+  input.addEventListener('blur', () => setTimeout(() => {
+    if (!root.contains(document.activeElement)) close();
+  }, 0));
+  toggle.addEventListener('click', () => {
+    if (opened) { close(); return; }
+    query = '';
+    searching = false;
+    updateInput();
+    input.focus();
+    open();
+  });
+  return {
+    root, input, list, close,
+    get query() { return query; },
+    set query(value) { query = value; if (opened) render(); },
+    setSelected(value) {
+      selected = value;
+      query = '';
+      searching = false;
+      edited = false;
+      updateInput();
+      close();
+    },
+    setItems(values, selectedId, isEdited = false) {
+      ids = [...values].sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
+      selected = selectedId;
+      edited = isEdited;
+      updateInput();
+      if (opened) render();
+    },
+  };
+}
+
 function renderPhotoIds(node, selectedId = node.photoControls.selectedId) {
-  const { search, select } = node.photoControls;
   node.photoControls.selectedId = selectedId;
-  const query = node.photoControls.query.trim().toLocaleLowerCase();
-  const values = Object.keys(cache.photo_ids)
-    .filter((id) => id.toLocaleLowerCase().includes(query))
-    .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
-  select.replaceChildren(...[SELECT_ID, ...values].map((value) => {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = value;
-    return option;
-  }));
-  select.value = values.includes(selectedId) ? selectedId : SELECT_ID;
   updatePhotoIdEdited(node);
   node.setDirtyCanvas?.(true, true);
 }
 
 function updatePhotoIdEdited(node) {
-  const select = node.photoControls?.select;
-  if (!select) return;
+  const autocomplete = node.photoControls?.autocomplete;
+  if (!autocomplete) return;
   const photoId = node.photoControls.selectedId;
   const saved = cache.photo_ids[photoId];
   const edited = !!saved && FIELDS.some(([field]) =>
     (isConnected(node, field) ? '' : String(widget(node, field)?.value ?? '')) !== (saved[field] ?? ''));
-  const option = [...select.children].find((item) => item.value === photoId);
-  if (option) option.textContent = edited ? `${photoId}${EDITED_SUFFIX}` : photoId;
-  select.style.color = edited ? EDITED_COLOR : '#fff';
-  node.photoControls.search.style.color = edited ? EDITED_COLOR : '#fff';
-  select.title = edited ? `${photoId}${EDITED_SUFFIX}` : 'Select Photo ID';
+  autocomplete.setItems(Object.keys(cache.photo_ids), photoId, edited);
 }
 
 function syncPhotoIds(photoIds) {
@@ -107,7 +251,7 @@ function markReferenceSelection(node) {
 }
 
 function referenceIds(node) {
-  const query = node.referenceQuery?.trim().toLocaleLowerCase() ?? '';
+  const query = node.referenceAutocomplete?.query.trim().toLocaleLowerCase() ?? '';
   return Object.keys(cache.photo_ids)
     .filter((id) => id.toLocaleLowerCase().includes(query))
     .sort((a, b) => photoIdCollator.compare(a, b) || a.localeCompare(b));
@@ -160,7 +304,7 @@ function renderReferenceGallery(node) {
     });
     gallery.append(button);
   }
-  if (!ids.length) gallery.textContent = node.referenceQuery?.trim()
+  if (!ids.length) gallery.textContent = node.referenceAutocomplete?.query.trim()
     ? 'No matching Photo IDs' : 'No saved Photo IDs';
   markReferenceSelection(node);
 }
@@ -168,19 +312,9 @@ function renderReferenceGallery(node) {
 function refreshReferencePhotoIds(node) {
   const photoWidget = widget(node, 'photo_id');
   if (!photoWidget) return;
-  const ids = referenceIds(node);
   if (photoIdsLoaded && !Object.hasOwn(cache.photo_ids, photoWidget.value)) photoWidget.value = SELECT_ID;
-  const select = node.referenceSelect;
-  if (select) {
-    select.replaceChildren(...[SELECT_ID, ...ids].map((value) => {
-      const option = document.createElement('option');
-      option.value = value;
-      option.textContent = value;
-      return option;
-    }));
-    select.value = ids.includes(photoWidget.value) ? photoWidget.value : SELECT_ID;
-    if (!node.referenceQuery) node.referenceSearch.value = photoWidget.value === SELECT_ID ? '' : photoWidget.value;
-  }
+  node.referenceAutocomplete?.setItems(Object.keys(cache.photo_ids), photoWidget.value);
+  if (!node.referenceAutocomplete?.query) node.referenceAutocomplete?.setSelected(photoWidget.value);
   renderReferenceGallery(node);
   node.setDirtyCanvas?.(true, true);
 }
@@ -532,8 +666,7 @@ async function saveCurrent(node) {
       result = await request(PATH, { ...payload, photo_id: error.photoId, overwrite: true });
     }
     if (node.photoControls) {
-      node.photoControls.query = '';
-      node.photoControls.search.value = result.saved_photo_id;
+      node.photoControls.autocomplete.setSelected(result.saved_photo_id);
       renderPhotoIds(node, result.saved_photo_id);
     }
     setWidget(node, 'photo_id', result.saved_photo_id);
@@ -573,8 +706,7 @@ function openRenamePhotoId(node) {
         const inputs = [...nodes].filter((item) => widget(item, 'photo_id')?.value === oldId);
         await request(`${PHOTO_ID_PATH}/rename`, { old_id: oldId, new_id: newId });
         for (const item of affected) {
-          item.photoControls.query = '';
-          item.photoControls.search.value = newId;
+          item.photoControls.autocomplete.setSelected(newId);
           renderPhotoIds(item, newId);
         }
         for (const item of inputs) setWidget(item, 'photo_id', newId);
@@ -597,8 +729,7 @@ async function deleteSelectedPhotoId(node) {
     for (const item of inputs) setWidget(item, 'photo_id', '');
     for (const item of nodes) {
       if (item.photoControls?.selectedId !== photoId) continue;
-      item.photoControls.query = '';
-      item.photoControls.search.value = '';
+      item.photoControls.autocomplete.setSelected(SELECT_ID);
       renderPhotoIds(item, SELECT_ID);
     }
     // syncPhotoIds resets the selection; section text widgets stay untouched.
@@ -629,43 +760,16 @@ function addPhotoControls(node) {
     });
     return row;
   };
-  const select = document.createElement('select');
-  select.setAttribute('aria-label', 'Select Photo ID');
-  select.title = 'Select Photo ID';
-  Object.assign(select.style, {
-    flex: '1 1 auto', width: '0', minWidth: '0', padding: '4px',
-    background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
-  });
-  select.addEventListener('change', () => {
-    node.photoControls.query = '';
-    search.value = select.value === SELECT_ID ? '' : select.value;
-    applyPhotoId(node, select.value);
-    renderPhotoIds(node, select.value);
-  });
-  const search = document.createElement('input');
-  search.type = 'search';
-  search.placeholder = 'Search ID';
-  search.setAttribute('aria-label', 'Search Photo ID');
-  Object.assign(search.style, {
-    flex: '1 1 auto', width: '0', minWidth: '0', padding: '4px',
-    background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
-  });
-  search.addEventListener('input', () => {
-    node.photoControls.query = search.value;
-    renderPhotoIds(node);
+  const autocomplete = makePhotoIdAutocomplete((photoId) => {
+    applyPhotoId(node, photoId);
+    renderPhotoIds(node, photoId);
   });
   const first = makeRow();
-  first.style.flexDirection = 'column';
-  first.style.minHeight = '72px';
-  search.style.width = '100%';
-  search.style.flex = '1 1 0';
-  const selectionRow = makeRow();
-  selectionRow.style.minHeight = '0';
-  selectionRow.style.flex = '1 1 0';
-  selectionRow.append(select,
+  autocomplete.root.style.flex = '1 1 auto';
+  autocomplete.root.style.width = '0';
+  first.append(autocomplete.root,
     makeControlButton('Rename', 'Rename selected Photo ID', () => openRenamePhotoId(node)),
     makeControlButton('Delete', 'Delete selected Photo ID', () => { void deleteSelectedPhotoId(node); }));
-  first.append(search, selectionRow);
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -688,10 +792,10 @@ function addPhotoControls(node) {
   photoWidget.options.hidden = true;
   photoWidget.computeSize = () => [0, -4];
   photoWidget.draw = () => {};
-  node.photoControls = { search, select, input, query: '', selectedId: SELECT_ID };
+  node.photoControls = { autocomplete, input, selectedId: SELECT_ID };
   // DOM widgets reserve 10px above and below the element by default.
   const firstWidget = node.addDOMWidget('Photo ID selection', 'photo_id_controls', first, {
-    serialize: false, hideOnZoom: false, getMinHeight: () => 92, getHeight: () => 92,
+    serialize: false, hideOnZoom: false, getMinHeight: () => 56, getHeight: () => 56,
   });
   const secondWidget = node.addDOMWidget('Photo ID actions', 'photo_id_controls', second, {
     serialize: false, hideOnZoom: false, getMinHeight: () => 56, getHeight: () => 56,
@@ -797,49 +901,22 @@ app.registerExtension({
           const oldCallback = photoWidget.callback;
           photoWidget.callback = (...callbackArgs) => {
             const callbackResult = oldCallback?.apply(photoWidget, callbackArgs);
-            if (this.referenceSearch) {
-              this.referenceQuery = '';
-              this.referenceSearch.value = photoWidget.value === SELECT_ID ? '' : photoWidget.value;
+            if (this.referenceAutocomplete) {
+              this.referenceAutocomplete.setSelected(photoWidget.value);
               refreshReferencePhotoIds(this);
             }
             markReferenceSelection(this);
             return callbackResult;
           };
         }
-        const selection = document.createElement('div');
-        Object.assign(selection.style, {
-          display: 'flex', flexDirection: 'column', width: '100%', height: '100%',
-          boxSizing: 'border-box', gap: '5px',
-        });
-        const search = document.createElement('input');
-        search.type = 'search';
-        search.placeholder = 'Search Photo ID';
-        search.setAttribute('aria-label', 'Search Photo ID');
-        Object.assign(search.style, {
-          boxSizing: 'border-box', width: '100%', flex: '1 1 0', minHeight: '0', padding: '5px',
-          background: '#17191c', color: '#fff', border: '1px solid #666',
-          borderRadius: '6px',
-        });
-        this.referenceSearch = search;
-        this.referenceQuery = '';
-        search.value = photoWidget?.value === SELECT_ID ? '' : String(photoWidget?.value ?? '');
-        search.addEventListener('input', () => {
-          this.referenceQuery = search.value;
-          refreshReferencePhotoIds(this);
-        });
-        const select = document.createElement('select');
-        select.setAttribute('aria-label', 'Select Photo ID');
-        select.title = 'Select Photo ID';
-        Object.assign(select.style, {
-          boxSizing: 'border-box', width: '100%', flex: '1 1 0', minHeight: '0', padding: '5px',
-          background: '#17191c', color: '#fff', border: '1px solid #666', borderRadius: '6px',
-        });
-        this.referenceSelect = select;
-        select.addEventListener('change', () => setWidget(this, 'photo_id', select.value));
-        selection.append(search, select);
-        const searchWidget = this.addDOMWidget('Photo ID selection', 'photo_id_search', selection, {
+        const autocomplete = makePhotoIdAutocomplete(
+          (photoId) => setWidget(this, 'photo_id', photoId),
+          () => renderReferenceGallery(this));
+        this.referenceAutocomplete = autocomplete;
+        autocomplete.setSelected(photoWidget?.value ?? SELECT_ID);
+        const searchWidget = this.addDOMWidget('Photo ID selection', 'photo_id_search', autocomplete.root, {
           serialize: false, hideOnZoom: false,
-          getMinHeight: () => 90, getHeight: () => 90,
+          getMinHeight: () => 54, getHeight: () => 54,
         });
         searchWidget.serialize = false;
         refreshReferencePhotoIds(this);
@@ -870,7 +947,7 @@ app.registerExtension({
         this.onConfigure = function (...configureArgs) {
           const configured = oldConfigure?.apply(this, configureArgs);
           syncAdditionalPrompt?.();
-          this.referenceQuery = '';
+          this.referenceAutocomplete.setSelected(photoWidget?.value ?? SELECT_ID);
           refreshReferencePhotoIds(this);
           return configured;
         };
@@ -915,8 +992,7 @@ app.registerExtension({
           const photoId = String(widget(this, 'photo_id')?.value ?? '');
           this.photoControls.input.value = photoId;
           this.photoControls.selectedId = photoId;
-          this.photoControls.query = '';
-          this.photoControls.search.value = photoId;
+          this.photoControls.autocomplete.setSelected(photoId);
           renderPhotoIds(this);
         }
         syncConnections(this);
