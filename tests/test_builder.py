@@ -410,7 +410,22 @@ class TestCompose(unittest.TestCase):
         self.assertNotIn('history_limit', inputs)
         for field in ('appearance', 'hair_makeup', 'pose', 'expression'):
             self.assertIn(field, inputs)
-            self.assertIn(f'use_{field}', inputs)
+            self.assertNotIn(f'use_{field}', inputs)
+        self.assertEqual(mod.Krea2PhotoPromptBuilder.INPUT_TYPES()['hidden'],
+                         {'prompt': 'PROMPT', 'unique_id': 'UNIQUE_ID'})
+        builder = mod.Krea2PhotoPromptBuilder()
+        prompt = {'7': {'inputs': {'subject': ['2', 0], 'lighting': 'Soft light'}}}
+        self.assertEqual(builder.build(prompt=prompt, unique_id='7', subject='External text',
+                                       lighting='Soft light', auto_save_history=False),
+                         ('Lighting:\nSoft light',))
+        self.assertEqual(builder.build(prompt={'7': {'inputs': {'subject': 'Local text'}}},
+                                       unique_id='7', subject='Local text',
+                                       auto_save_history=False), ('Subject:\nLocal text',))
+        with patch.object(mod, 'add_entries') as save:
+            builder.build(prompt=prompt, unique_id='7', subject='External text',
+                          lighting='Soft light')
+            self.assertFalse(save.call_args.kwargs['enabled']['subject'])
+            self.assertTrue(save.call_args.kwargs['enabled']['lighting'])
 
     def test_reference_reads_current_combination_without_writing(self):
         import sys
@@ -510,7 +525,7 @@ class TestImages(unittest.TestCase):
             prompt = {
                 '1': {'class_type': 'MagichanLab_Krea2PhotoPromptBuilder',
                       'inputs': {'photo_id': 'saved-1', 'subject': 'Portrait',
-                                 'pose': 'Draft pose', 'use_pose': False}},
+                                 'pose': ['9', 0]}},
                 '2': {'class_type': 'CLIPTextEncode', 'inputs': {'text': ['1', 0]}},
                 '3': {'class_type': 'SaveImage', 'inputs': {'images': ['2', 0]}},
                 '4': {'class_type': 'SaveImage', 'inputs': {}},
@@ -543,7 +558,7 @@ class TestImages(unittest.TestCase):
             Image.new('RGB', (32, 32), 'red').save(images.IMAGE_DIR / 'saved.png')
             Image.new('RGB', (64, 64), 'blue').save(output / 'generated.png')
             inputs = {'photo_id': 'saved', 'subject': 'Edited portrait',
-                      'lighting': 'Soft', 'use_lighting': False}
+                      'lighting': ['9', 0]}
             prompt = {'1': {'class_type': 'MagichanLab_Krea2PhotoPromptBuilder',
                             'inputs': inputs},
                       '2': {'class_type': 'SaveImage', 'inputs': {'images': ['1', 0]}}}

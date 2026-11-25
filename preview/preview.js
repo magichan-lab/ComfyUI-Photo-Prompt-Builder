@@ -109,7 +109,7 @@ class PreviewNode {
         get: () => textarea.value,
         set: value => { textarea.value = value; },
       });
-      this.widgets.push(widget, { name: `use_${key}`, value: true });
+      this.widgets.push(widget);
     }
     this.widgets.push({ name: 'photo_id', value: '' });
   }

@@ -49,7 +49,7 @@ The following inputs belong to **Krea2 Photo Prompt Builder**.
 - `lighting`: light source, direction, contrast, color temperature
 - `finishing`: texture, color grade, mood, photo style
 
-Each has a `use_...` toggle. Disabled sections are retained in the workflow and history, but excluded from output. Blank sections are omitted. The `auto_save_history` toggle controls saving nonempty values **when this node executes**. History has no retention limit.
+Each section is included when its local text is nonempty. Connecting an external node to a section automatically excludes that section from the combined prompt and disables its local editor while connected. Blank sections are omitted. The `auto_save_history` toggle controls saving nonempty local values **when this node executes**. History has no retention limit.
 
 The `appearance` and `pose` input keys remain unchanged for existing workflows. If older inputs or history entries contain hair, makeup, or expression details, move those details into the new fields as needed.
 
@@ -87,7 +87,7 @@ Headings and paragraph spacing are fixed. Output is plain `STRING`, compatible w
 - Click `Preview` to inspect/copy the generated prompt without running the sampler.
 - Duplicate values are removed, and the most recently saved entry appears first. Histories are independent for all nine categories.
 - All strings are retained until deleted. Deleting or clearing history removes the affected fields from their Photo IDs.
-- **History is shared by all builder nodes in the same ComfyUI installation.** Current values/toggles are also saved in each ComfyUI workflow.
+- **History is shared by all builder nodes in the same ComfyUI installation.** Current values and external node connections are also saved in each ComfyUI workflow.
 
 ## Storage and backup
 

@@ -35,9 +35,11 @@ def _matches_saved_photo_id(inputs, saved_values):
     current = {}
     for field in FIELDS:
         value = inputs.get(field, '')
+        if isinstance(value, list) and len(value) == 2:
+            continue
         if not isinstance(value, str):
             return False
-        if inputs.get(f'use_{field}', True) and value.strip():
+        if value.strip():
             current[field] = value.strip()
     return current == saved_values
 

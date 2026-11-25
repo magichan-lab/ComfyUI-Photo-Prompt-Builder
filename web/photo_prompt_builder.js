@@ -181,12 +181,17 @@ function widget(node, name) {
 
 function getValues(node) {
   const values = {};
-  for (const [key] of FIELDS) values[key] = String(widget(node, key)?.value ?? '');
+  for (const [key] of FIELDS) values[key] = isConnected(node, key)
+    ? '' : String(widget(node, key)?.value ?? '');
   return values;
 }
 
 function getEnabled(node) {
-  return Object.fromEntries(FIELDS.map(([key]) => [key, widget(node, `use_${key}`)?.value !== false]));
+  return Object.fromEntries(FIELDS.map(([key]) => [key, !isConnected(node, key)]));
+}
+
+function isConnected(node, field) {
+  return node.inputs?.some((input) => input.name === field && input.link != null) ?? false;
 }
 
 function setWidget(node, name, value) {
@@ -202,9 +207,9 @@ function applyPhotoId(node, photoId) {
   if (!Object.hasOwn(cache.photo_ids, photoId)) return;
   const values = cache.photo_ids[photoId];
   for (const [key] of FIELDS) {
+    if (isConnected(node, key)) continue;
     const value = values[key] ?? '';
     setWidget(node, key, value);
-    setWidget(node, `use_${key}`, Boolean(value));
   }
   setWidget(node, 'photo_id', photoId);
 }
@@ -212,9 +217,8 @@ function applyPhotoId(node, photoId) {
 function compose(node) {
   const parts = [];
   for (const [key, label] of FIELDS) {
-    const enabled = widget(node, `use_${key}`)?.value !== false;
     const value = String(widget(node, key)?.value ?? '').trim();
-    if (enabled && value) parts.push(`${label}:\n${value}`);
+    if (!isConnected(node, key) && value) parts.push(`${label}:\n${value}`);
   }
   return parts.join('\n\n');
 }
@@ -341,7 +345,7 @@ async function openHistory(node, field, label, before = null, previous = []) {
       });
       addButton('Use selected', () => {
         const value = getSelected();
-        if (value === undefined) return;
+        if (value === undefined || isConnected(node, field)) return;
         const target = widget(node, field);
         if (target) {
           target.value = value;
@@ -394,9 +398,39 @@ function addHistoryButton(node, field, label) {
     flex: '0 0 72px', alignSelf: 'stretch', border: '1px solid #666',
     borderRadius: '6px', background: '#444b56', color: '#fff', cursor: 'pointer',
   });
-  button.addEventListener('click', () => { void openHistory(node, field, label); });
+  button.addEventListener('click', () => {
+    if (!isConnected(node, field)) void openHistory(node, field, label);
+  });
   row.append(textarea, button);
   target.element = row;
+  const status = document.createElement('div');
+  status.textContent = `${label}: Exclude — external node connected / 外部ノード接続中`;
+  Object.assign(status.style, {
+    boxSizing: 'border-box', width: '100%', padding: '5px 8px',
+    background: '#42372b', color: '#ffe0a8', borderRadius: '6px',
+    fontSize: '12px',
+  });
+  const statusWidget = node.addDOMWidget(`${field} connection`, 'connection_status', status, {
+    serialize: false, hideOnZoom: false,
+    getMinHeight: () => isConnected(node, field) ? 30 : 0,
+    getHeight: () => isConnected(node, field) ? 30 : 0,
+  });
+  statusWidget.serialize = false;
+  node.connectionControls ??= {};
+  node.connectionControls[field] = { textarea, button, status };
+}
+
+function syncConnections(node) {
+  for (const [field] of FIELDS) {
+    const control = node.connectionControls?.[field];
+    if (!control) continue;
+    const connected = isConnected(node, field);
+    control.textarea.disabled = connected;
+    control.button.disabled = connected;
+    control.status.style.display = connected ? 'block' : 'none';
+  }
+  fitNodeToWidgets(node);
+  node.setDirtyCanvas?.(true, true);
 }
 
 function preview(node) {
@@ -743,23 +777,36 @@ app.registerExtension({
       addPhotoControls(this);
       const oldConfigure = this.onConfigure;
       this.onConfigure = function (...configureArgs) {
-        const configured = oldConfigure?.apply(this, configureArgs);
-        // Older workflows serialize history_limit just before photo_id.
+        // Old workflows serialized a Boolean after each field, optionally with history_limit.
         const values = configureArgs[0]?.widgets_values;
-        const oldLimitIndex = FIELDS.length * 2 + 1;
-        if (Array.isArray(values) && typeof values[oldLimitIndex] === 'number') {
+        let restoredPhotoId;
+        if (Array.isArray(values) && values.length >= FIELDS.length * 2 + 2) {
+          restoredPhotoId = values[typeof values[FIELDS.length * 2 + 1] === 'number'
+            ? FIELDS.length * 2 + 2 : FIELDS.length * 2 + 1];
+          values.splice(0, values.length,
+            ...FIELDS.map((_, index) => values[index * 2]),
+            values[FIELDS.length * 2],
+            restoredPhotoId);
+        }
+        const configured = oldConfigure?.apply(this, configureArgs);
+        if (restoredPhotoId !== undefined) {
           const photoWidget = widget(this, 'photo_id');
-          if (photoWidget) photoWidget.value = String(values[oldLimitIndex + 1] ?? '');
-          values.splice(oldLimitIndex, 1);
+          if (photoWidget) photoWidget.value = String(restoredPhotoId ?? '');
         }
         if (this.photoControls) {
           this.photoControls.input.value = String(widget(this, 'photo_id')?.value ?? '');
         }
-        fitNodeToWidgets(this);
+        syncConnections(this);
         return configured;
       };
+      const oldConnectionsChange = this.onConnectionsChange;
+      this.onConnectionsChange = function (...connectionArgs) {
+        const changed = oldConnectionsChange?.apply(this, connectionArgs);
+        queueMicrotask(() => syncConnections(this));
+        return changed;
+      };
       void request(`${PATH}?include_history=0`).catch((error) => notify(`Cannot load Photo IDs: ${error.message}`));
-      fitNodeToWidgets(this);
+      syncConnections(this);
       return result;
     };
   },

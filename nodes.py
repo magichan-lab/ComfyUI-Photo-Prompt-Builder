@@ -38,18 +38,19 @@ class Krea2PhotoPromptBuilder:
         required = {}
         for key in FIELDS:
             required[key] = ('STRING', {'default': '', 'multiline': True, 'dynamicPrompts': False})
-            required[f'use_{key}'] = ('BOOLEAN', {'default': True, 'label_on': 'Include', 'label_off': 'Exclude'})
         required['auto_save_history'] = ('BOOLEAN', {'default': True, 'label_on': 'On', 'label_off': 'Off'})
         required['photo_id'] = ('STRING', {'default': '', 'multiline': False})
-        return {'required': required}
+        return {'required': required, 'hidden': {'prompt': 'PROMPT', 'unique_id': 'UNIQUE_ID'}}
 
-    def build(self, **kwargs):
+    def build(self, prompt=None, unique_id=None, **kwargs):
         values = {key: kwargs.get(key, '') for key in FIELDS}
-        enabled = {key: kwargs.get(f'use_{key}', True) for key in FIELDS}
+        inputs = (prompt or {}).get(str(unique_id), {}).get('inputs', {})
+        enabled = {key: not (isinstance(inputs.get(key), list) and
+                             len(inputs[key]) == 2) for key in FIELDS}
         prompt = compose_prompt(values, enabled)
         if kwargs.get('auto_save_history', True):
             try:
-                add_entries(values, return_state=False)
+                add_entries(values, enabled=enabled, return_state=False)
             except (OSError, ValueError, RuntimeError) as e:
                 print(f'[Krea2 Photo Prompt Builder] Cannot save history: {e}')
         return (prompt,)

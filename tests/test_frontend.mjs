@@ -6,7 +6,7 @@ import vm from 'node:vm';
 class Element {
   constructor(tag) {
     this.tag = tag;
-    this.style = {};
+    this.style = { setProperty(name, value) { this[name] = value; } };
     this.value = '';
     this.children = [];
     this.listeners = {};
@@ -20,6 +20,7 @@ class Element {
   setAttribute() {}
   addEventListener(name, callback) { this.listeners[name] = callback; }
 }
+class TextAreaElement extends Element {}
 const body = new Element('body');
 const calls = [];
 const events = new Map();
@@ -29,8 +30,9 @@ let extension;
 const context = vm.createContext({
   URLSearchParams,
   setTimeout,
-  HTMLTextAreaElement: class {},
-  document: { body, createElement: tag => new Element(tag) },
+  HTMLTextAreaElement: TextAreaElement,
+  queueMicrotask,
+  document: { body, createElement: tag => tag === 'textarea' ? new TextAreaElement(tag) : new Element(tag) },
   window: { confirm: () => true },
   app: { registerExtension(value) { extension = value; } },
   api: { addEventListener(name, callback) { events.set(name, callback); }, async fetchApi(path, options) {
@@ -56,19 +58,20 @@ const context = vm.createContext({
 const source = await readFile(new URL('../web/photo_prompt_builder.js', import.meta.url), 'utf8');
 vm.runInContext(source.replace(/^import .*;\r?\n/gm, ''), context);
 extension.setup();
-const { openHistory, saveCurrent, fields } = vm.runInContext('({openHistory, saveCurrent, fields: FIELDS})', context);
+const { openHistory, saveCurrent, compose, fields } = vm.runInContext('({openHistory, saveCurrent, compose, fields: FIELDS})', context);
 class Builder {
   constructor() {
-    this.widgets = fields.flatMap(([name]) => [{ name, value: '' }, { name: `use_${name}`, value: true }]);
+    this.widgets = fields.map(([name]) => ({ name, value: '', element: new TextAreaElement('textarea') }));
     this.widgets.push({ name: 'auto_save_history', value: true }, { name: 'photo_id', value: '' });
     this.size = [430, 760];
+    this.inputs = fields.map(([name]) => ({ name, link: null }));
   }
   addDOMWidget(name, type, element, options) {
     const widget = { name, type, element, options };
     this.widgets.push(widget);
     return widget;
   }
-  computeSize() { return this.size; }
+  computeSize() { return [430, 760 + this.inputs.filter(input => input.link != null).length * 30]; }
   setSize(size) { this.size = size; }
 }
 await extension.beforeRegisterNodeDef(Builder, { name: 'MagichanLab_Krea2PhotoPromptBuilder' });
@@ -81,15 +84,39 @@ photoWidget.value = 100; // Value assigned by the old positional serialization.
 node.onConfigure({ widgets_values: oldValues });
 assert.equal(photoWidget.value, 'legacy-photo');
 assert.equal(node.photoControls.input.value, 'legacy-photo');
-assert.equal(oldValues[19], 'legacy-photo');
-const currentValues = fields.flatMap(() => ['', true]);
+assert.equal(oldValues[10], 'legacy-photo');
+assert.equal(oldValues.length, 11);
+const currentValues = fields.map(() => '');
 currentValues.push(true, '123');
 photoWidget.value = '123';
 node.onConfigure({ widgets_values: currentValues });
 assert.equal(photoWidget.value, '123');
-assert.equal(currentValues.length, 20);
+assert.equal(currentValues.length, 11);
 assert.ok(calls[0].path.endsWith('?include_history=0'));
 console.log('PASS: legacy workflow Photo ID restoration and current serialization');
+
+const subjectControl = node.connectionControls.subject;
+assert.equal(subjectControl.textarea.disabled, false);
+node.inputs[0].link = 42;
+node.onConnectionsChange();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(subjectControl.textarea.disabled, true);
+assert.equal(subjectControl.button.disabled, true);
+assert.match(subjectControl.status.textContent, /外部ノード接続中/);
+assert.equal(subjectControl.status.style.display, 'block');
+assert.equal(node.size[1], 790);
+node.widgets[0].value = 'Stale local value';
+assert.equal(compose(node), '');
+await saveCurrent(node);
+const connectedSave = calls.findLast(call => call.path.endsWith('/history') && call.options);
+assert.equal(JSON.parse(connectedSave.options.body).enabled.subject, false);
+assert.equal(JSON.parse(connectedSave.options.body).entries.subject, '');
+node.inputs[0].link = null;
+node.onConnectionsChange();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(subjectControl.textarea.disabled, false);
+assert.equal(subjectControl.status.style.display, 'none');
+console.log('PASS: connection controls field editing and node size');
 
 function actions() { return body.children.at(-1).children[0].children[2].children; }
 async function click(label) {
