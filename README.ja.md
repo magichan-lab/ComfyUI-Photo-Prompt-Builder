@@ -33,6 +33,8 @@ ComfyUI内部でのノードIDは`MagichanLab_Krea2PhotoPromptBuilder`と`Magich
 
 **Krea2 Image to Text Save**は`prompt/photo`カテゴリの保存ノードです。画像を直接分析するモデルは含みません。Qwen3.5などの画像分析ノードに画像と指示文を渡し、そのテキスト出力を`tags_json`へ接続してください。モデルには、説明文やMarkdownを付けず、以下の9キーを持つJSONオブジェクトを1つだけ返すよう指示します。判別できない項目は空文字にしてください。
 
+Qwen3.5-9Bを使う場合は、[Image2Textワークフロー](workflows/Qwen3.5-9B-Image2Text.json)をComfyUIへドラッグ＆ドロップできます。ComfyUI標準の`CLIPLoader`と`TextGenerate`から、この保存ノードへ接続済みです。[Comfy-Org配布のモデル](https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_9b_bf16.safetensors)を`ComfyUI/models/text_encoders/`に配置し、`Load Image`で分析する画像を選択して実行してください。初期設定は`Manual`なので、結果を確認してから保存ノードの**Save**を押します。モデルファイルはワークフローに含まれません。
+
 ```json
 {"subject":"A person","appearance":"White shirt","hair_makeup":"","pose":"Standing","expression":"","environment":"","composition":"","lighting":"Soft side light","finishing":""}
 ```

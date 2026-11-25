@@ -1,0 +1,386 @@
+{
+  "revision": 0,
+  "last_node_id": 8,
+  "last_link_id": 5,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "CLIPLoader",
+      "pos": [
+        0,
+        0
+      ],
+      "size": [
+        430,
+        150
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "showAdvanced": false,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1",
+        "Node name for S&R": "CLIPLoader",
+        "models": [
+          {
+            "name": "qwen3.5_9b_bf16.safetensors",
+            "url": "https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_9b_bf16.safetensors",
+            "directory": "text_encoders"
+          }
+        ]
+      },
+      "widgets_values": [
+        "qwen3.5_9b_bf16.safetensors",
+        "stable_diffusion",
+        "default"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "LoadImage",
+      "pos": [
+        0,
+        240
+      ],
+      "size": [
+        420,
+        370
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "",
+        "image"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "TextGenerate",
+      "pos": [
+        500,
+        0
+      ],
+      "size": [
+        500,
+        560
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 1
+        },
+        {
+          "name": "image",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "generated_text",
+          "type": "STRING",
+          "links": [
+            3,
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1",
+        "Node name for S&R": "TextGenerate"
+      },
+      "widgets_values": [
+        "Analyze the input photograph and return exactly one valid JSON object. Output JSON only: no Markdown fences, introduction, explanation, or text after the object. Use exactly these nine keys in this order, with string values: \"subject\", \"appearance\", \"hair_makeup\", \"pose\", \"expression\", \"environment\", \"composition\", \"lighting\", \"finishing\". Write concise, concrete English descriptions useful as a photographic image-generation prompt. Describe only details visible in the image; do not invent identity, intent, camera model, lens focal length, or editing settings. Put the main subject and visible attributes in subject; clothing and accessories in appearance; hair and makeup in hair_makeup; body position and action in pose; visible facial expression in expression; setting and background in environment; framing, viewpoint, and depth of field in composition; visible light quality, direction, and color in lighting; and observable color grading or photographic finish in finishing. Use an empty string when a category cannot be determined. Include all nine keys even when some values are empty. Escape quotation marks and newlines inside JSON strings.",
+        1024,
+        "on",
+        0.2,
+        64,
+        0.95,
+        0.05,
+        1.05,
+        0,
+        0,
+        false
+      ]
+    },
+    {
+      "id": 4,
+      "type": "PreviewAny",
+      "pos": [
+        1050,
+        0
+      ],
+      "size": [
+        450,
+        430
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 3
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "enableTabs": false,
+        "tabWidth": 65,
+        "tabXOffset": 10,
+        "hasSecondTab": false,
+        "secondTabText": "Send Back",
+        "secondTabOffset": 80,
+        "secondTabWidth": 65,
+        "cnr_id": "comfy-core",
+        "ver": "0.18.1",
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [
+        null,
+        null,
+        null
+      ],
+      "title": "Generated JSON (check before saving)"
+    },
+    {
+      "id": 5,
+      "type": "MagichanLab_Krea2ImageToTextSave",
+      "pos": [
+        1050,
+        490
+      ],
+      "size": [
+        450,
+        460
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "tags_json",
+          "type": "STRING",
+          "widget": {
+            "name": "tags_json"
+          },
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "STRING",
+          "links": [
+            5
+          ]
+        },
+        {
+          "name": "photo_id",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "MagichanLab_Krea2ImageToTextSave"
+      },
+      "widgets_values": [
+        "",
+        "Manual",
+        "",
+        false
+      ]
+    },
+    {
+      "id": 7,
+      "type": "PreviewAny",
+      "title": "Combined photo prompt",
+      "pos": [
+        1550,
+        490
+      ],
+      "size": [
+        450,
+        460
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "source",
+          "type": "*",
+          "link": 5
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [
+        null,
+        null,
+        null
+      ]
+    },
+    {
+      "id": 6,
+      "type": "MarkdownNote",
+      "pos": [
+        0,
+        700
+      ],
+      "size": [
+        1000,
+        260
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "# Qwen3.5-9B → Krea2 Image to Text Save\n1. Download [Qwen3.5-9B BF16](https://huggingface.co/Comfy-Org/Qwen3.5/resolve/main/text_encoders/qwen3.5_9b_bf16.safetensors) into `ComfyUI/models/text_encoders/` and select it in Load CLIP.\n2. Select an image in Load Image, then run the workflow.\n3. Inspect the generated JSON and the nine fields on Krea2 Image to Text Save. With Manual mode, click **Save** to register the proposed Photo ID. Change to Auto to save during each run.\n4. Use Krea2 Photo Prompt Reference to reuse a saved Photo ID. If JSON validation fails, rerun or adjust the instruction.\nRequires a recent ComfyUI with the built-in TextGenerate node and this custom node package. The model is about 19.3 GB. The workflow does not download it or include a sample image."
+      ],
+      "color": "#222",
+      "bgcolor": "#000"
+    },
+    {
+      "id": 8,
+      "type": "MarkdownNote",
+      "title": "Qwen3.5-9B instruction example / JSON format",
+      "pos": [
+        0,
+        1010
+      ],
+      "size": [
+        1000,
+        760
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "# 画像解析の指示文サンプル\n下記は `TextGenerate` ノードの `prompt` に設定済みの指示文です。必要に応じてコピー・編集してください。\n\n```text\nAnalyze the input photograph and return exactly one valid JSON object. Output JSON only: no Markdown fences, introduction, explanation, or text after the object. Use exactly these nine keys in this order, with string values: \"subject\", \"appearance\", \"hair_makeup\", \"pose\", \"expression\", \"environment\", \"composition\", \"lighting\", \"finishing\". Write concise, concrete English descriptions useful as a photographic image-generation prompt. Describe only details visible in the image; do not invent identity, intent, camera model, lens focal length, or editing settings. Put the main subject and visible attributes in subject; clothing and accessories in appearance; hair and makeup in hair_makeup; body position and action in pose; visible facial expression in expression; setting and background in environment; framing, viewpoint, and depth of field in composition; visible light quality, direction, and color in lighting; and observable color grading or photographic finish in finishing. Use an empty string when a category cannot be determined. Include all nine keys even when some values are empty. Escape quotation marks and newlines inside JSON strings.\n```\n\n## `tags_json` に渡す出力形式の例\n```json\n{\n  \"subject\": \"One adult person\",\n  \"appearance\": \"White shirt and dark jacket\",\n  \"hair_makeup\": \"Short dark hair\",\n  \"pose\": \"Standing and facing the camera\",\n  \"expression\": \"Neutral expression\",\n  \"environment\": \"City street in the background\",\n  \"composition\": \"Waist-up portrait, eye-level viewpoint, blurred background\",\n  \"lighting\": \"Soft daylight from camera left\",\n  \"finishing\": \"Muted colors\"\n}\n```\n\n実行時の出力は、コードフェンスなしのJSONオブジェクト1個だけにします。キーは上記の9個のみ、値はすべて文字列です。画像から判断できない項目には空文字列を入れます。少なくとも1項目は空欄にせず、各値を8000文字以内にしてください。"
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "CLIP"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      1,
+      "IMAGE"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "STRING"
+    ],
+    [
+      4,
+      3,
+      0,
+      5,
+      0,
+      "STRING"
+    ],
+    [
+      5,
+      5,
+      0,
+      7,
+      0,
+      "STRING"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.75,
+      "offset": [
+        100,
+        100
+      ]
+    }
+  },
+  "version": 0.4
+}
