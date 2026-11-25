@@ -35,7 +35,7 @@ const context = vm.createContext({
   HTMLTextAreaElement: TextAreaElement,
   queueMicrotask,
   document: { body, createElement: tag => tag === 'textarea' ? new TextAreaElement(tag) : new Element(tag) },
-  window: { confirm: () => true },
+  window: { confirm: () => true, addEventListener() {} },
   app: { registerExtension(value) { extension = value; } },
   api: { addEventListener(name, callback) { events.set(name, callback); }, async fetchApi(path, options) {
     calls.push({ path, options });
@@ -84,7 +84,7 @@ class Builder {
   }
   computeSize() {
     const labelHeight = this.widgets.slice(0, fields.length).reduce((height, widget) =>
-      height + Math.max(0, parseInt(widget.element.style['--comfy-widget-min-height'] || '80', 10) - 80), 0);
+      height + Math.max(0, (widget.options?.getMinHeight?.() ?? 80) - 80), 0);
     return [430, 760 + labelHeight + this.inputs.filter(input => input.link != null).length * 30];
   }
   setSize(size) { this.size = size; }
@@ -115,9 +115,12 @@ for (const [index, [, label]] of fields.entries()) {
   const fieldWidget = node.widgets[index];
   assert.equal(fieldWidget.element.children[0].textContent, label);
   assert.equal(fieldWidget.element.children[1].children[0], node.connectionControls[fields[index][0]].textarea);
-  assert.equal(fieldWidget.element.style['--comfy-widget-min-height'], '104px');
+  assert.equal(fieldWidget.element.style['--comfy-widget-min-height'], '124px');
+  assert.equal(fieldWidget.options.getMinHeight(), 124);
+  assert.ok(fieldWidget.options.getMinHeight() >=
+    parseInt(fieldWidget.element.style.minHeight, 10) + 20);
 }
-assert.equal(node.size[1], 976);
+assert.equal(node.size[1], 1156);
 assert.equal(subjectControl.textarea.disabled, false);
 node.inputs[0].link = 42;
 node.onConnectionsChange();
@@ -126,7 +129,7 @@ assert.equal(subjectControl.textarea.disabled, true);
 assert.equal(subjectControl.button.disabled, true);
 assert.match(subjectControl.status.textContent, /外部ノード接続中/);
 assert.equal(subjectControl.status.style.display, 'block');
-assert.equal(node.size[1], 1006);
+assert.equal(node.size[1], 1186);
 node.widgets[0].value = 'Stale local value';
 assert.equal(compose(node), '');
 await saveCurrent(node);

@@ -24,6 +24,7 @@ const PHOTO_ID_RE = /^[A-Za-z0-9!#$%*+\-./:;=?@_~]{1,24}$/;
 const SELECT_ID = '(Select Photo ID)';
 const EDITED_SUFFIX = ' [Edited]';
 const EDITED_COLOR = '#ffd58a';
+const FIELD_WIDGET_HEIGHT = 124; // 104px of content plus the DOM widget's 10px margins.
 const photoIdCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 function renderPhotoIds(node, selectedId = node.photoControls.selectedId) {
@@ -417,7 +418,9 @@ function addHistoryButton(node, field, label) {
     display: 'flex', flexDirection: 'column', width: '100%', height: '100%',
     minHeight: '104px', gap: '4px', boxSizing: 'border-box',
   });
-  container.style.setProperty('--comfy-widget-min-height', '104px');
+  container.style.setProperty('--comfy-widget-min-height', `${FIELD_WIDGET_HEIGHT}px`);
+  target.options ??= {};
+  target.options.getMinHeight = () => FIELD_WIDGET_HEIGHT;
   const heading = document.createElement('div');
   heading.textContent = label;
   Object.assign(heading.style, {
