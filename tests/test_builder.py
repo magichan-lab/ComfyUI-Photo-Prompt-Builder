@@ -397,6 +397,32 @@ class TestImageToTextSave(unittest.TestCase):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 self.nodes.parse_image_tags(invalid)
 
+    def test_title_is_allowed_and_used_as_photo_id(self):
+        raw = json.dumps({'title': 'A Photo Title', **self.entries})
+        self.assertEqual(self.nodes.parse_image_tags(raw), self.entries)
+        with patch.object(self.nodes, 'add_entries') as add:
+            result = self.nodes.Krea2ImageToTextSave().process(raw, 'Auto')
+        self.assertEqual(result['result'][1], 'A_Photo_Title')
+        self.assertEqual(result['ui']['image_to_text'][0]['entries'], self.entries)
+        add.assert_called_once_with(self.entries, photo_id='A_Photo_Title',
+                                    overwrite=False, return_state=False)
+
+    def test_external_photo_id_takes_precedence_over_title(self):
+        raw = json.dumps({'title': 'Ignored Title', **self.entries})
+        result = self.nodes.Krea2ImageToTextSave().process(raw, 'Manual', 'external-1')
+        self.assertEqual(result['result'][1], 'external-1')
+
+    def test_invalid_title_photo_id_is_rejected_when_used(self):
+        raw = json.dumps({'title': 'Invalid & Title', **self.entries})
+        with self.assertRaisesRegex(ValueError, 'Photo ID'):
+            self.nodes.Krea2ImageToTextSave().process(raw)
+        result = self.nodes.Krea2ImageToTextSave().process(raw, 'Manual', 'external-1')
+        self.assertEqual(result['result'][1], 'external-1')
+        for title in ('', None):
+            with self.subTest(title=title), self.assertRaises(ValueError):
+                self.nodes.Krea2ImageToTextSave().process(
+                    json.dumps({'title': title, **self.entries}))
+
     def test_manual_does_not_save_until_button_action(self):
         with patch.object(self.nodes, 'add_entries') as add:
             result = self.nodes.Krea2ImageToTextSave().process(self.raw, 'Manual', 'source-1')

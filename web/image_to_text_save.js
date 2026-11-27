@@ -16,6 +16,10 @@ function describe(entries) {
     .map(([field, label]) => `${label}:\n${entries[field]}`).join('\n\n');
 }
 
+function photoIdWidget(node) {
+  return node.widgets?.find(widget => widget.name === 'photo_id');
+}
+
 function refreshPhotoIds() {
   window.dispatchEvent(new Event('magichanlab-photo-ids-changed'));
 }
@@ -24,27 +28,30 @@ async function save(node) {
   const pending = node.imageToTextPending;
   if (!pending || pending.saved) return;
   const button = node.imageToTextControls.button;
+  const photoId = photoIdWidget(node)?.value ?? pending.photo_id;
   button.disabled = true;
   try {
     let response = await api.fetchApi(PATH, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entries: pending.entries, photo_id: pending.photo_id,
+      body: JSON.stringify({ entries: pending.entries, photo_id: photoId,
                              overwrite: pending.overwrite }),
     });
     if (response.status === 409 && !pending.overwrite) {
-      if (!window.confirm(`Photo ID "${pending.photo_id}" already contains different text. Overwrite it?`)) {
+      if (!window.confirm(`Photo ID "${photoId}" already contains different text. Overwrite it?`)) {
         button.disabled = false;
         return;
       }
       response = await api.fetchApi(PATH, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ entries: pending.entries, photo_id: pending.photo_id,
+        body: JSON.stringify({ entries: pending.entries, photo_id: photoId,
                                overwrite: true }),
       });
     }
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
     pending.saved = true;
+    const photoWidget = photoIdWidget(node);
+    if (photoWidget) photoWidget.value = result.saved_photo_id;
     node.imageToTextControls.status.textContent = `Saved: ${result.saved_photo_id}`;
     refreshPhotoIds();
   } catch (error) {
@@ -104,6 +111,8 @@ app.registerExtension({
         const payload = message?.image_to_text?.[0];
         if (!payload || !payload.entries) return executed;
         this.imageToTextPending = payload;
+        const photoWidget = photoIdWidget(this);
+        if (photoWidget) photoWidget.value = payload.photo_id;
         preview.value = describe(payload.entries);
         status.textContent = `${payload.saved ? 'Saved' : 'Ready to save'}: ${payload.photo_id}`;
         button.disabled = payload.saved;

@@ -39,7 +39,7 @@ Qwen3.5-9Bを使う場合は、[Image2Textワークフロー](workflows/Qwen3.5-
 {"subject":"A person","appearance":"White shirt","hair_makeup":"","pose":"Standing","expression":"","environment":"","composition":"","lighting":"Soft side light","finishing":""}
 ```
 
-入力は`tags_json`（STRING）、`save_mode`（`Auto`または`Manual`、初期値`Manual`）、`photo_id`（STRINGの文字入力欄。空欄なら実行時刻の`yymmddHHMMSS`を使用）、`overwrite`（BOOLEAN、初期値Off）です。`tags_json`は全9キーが必要で、値はそれぞれ最大8000文字の文字列です。すべて空の場合や不正なJSONの場合は保存せずエラーにします。出力は結合済みの`prompt`（STRING）と`photo_id`（STRING）です。手動モードの`photo_id`出力は保存前の予定IDです。
+入力は`tags_json`（STRING）、`save_mode`（`Auto`または`Manual`、初期値`Manual`）、`photo_id`（STRINGの文字入力欄。空欄ならJSONの`title`のスペースを`_`に置換して使用し、`title`がなければ実行時刻の`yymmddHHMMSS`を使用）、`overwrite`（BOOLEAN、初期値Off）です。`tags_json`は全9キーが必要で、`title`キーも追加できます。9項目の値はそれぞれ最大8000文字の文字列です。`title`から作るIDにも既存の最大24文字・使用可能文字の制限が適用されます。すべて空の場合や不正なJSONの場合は保存せずエラーにします。出力は結合済みの`prompt`（STRING）と`photo_id`（STRING）です。手動モードの`photo_id`出力は保存前の予定IDです。
 
 `Auto`はワークフロー実行時に共有SQLite履歴へ保存します。`Manual`は実行結果をノード内に表示し、**Save**ボタンを押した時だけ保存します。画面に表示された内容とIDを保存するため、入力変更後はワークフローを再実行してください。既存Photo IDと内容が異なる場合、`overwrite`がOffなら自動モードはエラー、手動モードはSave時に上書きを確認します。保存したIDは参照ノードから再利用できます。空欄の場合、同じ秒に複数回実行するとIDが重複する可能性があります。同じIDへ更新する場合は`photo_id`を指定してください。現在のサムネイル自動保存はビルダーノード経由の生成を対象としており、この保存ノードからは行いません。
 

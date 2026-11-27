@@ -4,6 +4,8 @@ from datetime import datetime
 
 from .history import FIELDS, MAX_TEXT_LENGTH, PHOTO_ID_PATTERN, add_entries, list_photo_ids, read_photo_id
 
+_MISSING_TITLE = object()
+
 HEADINGS = {
     'subject': 'Subject',
     'appearance': 'Clothing',
@@ -26,7 +28,7 @@ def compose_prompt(values, enabled):
     return '\n\n'.join(parts)
 
 
-def parse_image_tags(raw):
+def _parse_image_tags_with_title(raw):
     """Validate one VLM response before it can enter shared history."""
     if not isinstance(raw, str):
         raise ValueError('tags_json must be a JSON string')
@@ -34,14 +36,20 @@ def parse_image_tags(raw):
         values = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise ValueError(f'tags_json must contain one JSON object: {exc.msg}') from exc
-    if not isinstance(values, dict) or set(values) != set(FIELDS):
-        raise ValueError('tags_json must contain exactly the nine photo prompt fields')
-    if any(not isinstance(value, str) or len(value) > MAX_TEXT_LENGTH for value in values.values()):
+    if not isinstance(values, dict) or set(values) - {'title'} != set(FIELDS):
+        raise ValueError('tags_json must contain the nine photo prompt fields and optional title')
+    if any(not isinstance(values[field], str) or len(values[field]) > MAX_TEXT_LENGTH
+           for field in FIELDS):
         raise ValueError('Each photo prompt field must be a string of at most 8000 characters')
+    title = values.get('title', _MISSING_TITLE)
     values = {field: values[field].strip() for field in FIELDS}
     if not any(values.values()):
         raise ValueError('At least one photo prompt field must be nonempty')
-    return values
+    return values, title
+
+
+def parse_image_tags(raw):
+    return _parse_image_tags_with_title(raw)[0]
 
 
 class Krea2ImageToTextSave:
@@ -62,12 +70,15 @@ class Krea2ImageToTextSave:
         }}
 
     def process(self, tags_json, save_mode='Manual', photo_id='', overwrite=False):
-        values = parse_image_tags(tags_json)
+        values, title = _parse_image_tags_with_title(tags_json)
         if save_mode not in ('Auto', 'Manual'):
             raise ValueError('save_mode must be Auto or Manual')
         if not isinstance(photo_id, str):
             raise ValueError('photo_id must be a string')
-        chosen_id = photo_id or datetime.now().strftime('%y%m%d%H%M%S')
+        if not photo_id and title is not _MISSING_TITLE and not isinstance(title, str):
+            raise ValueError('title must be a string when used as Photo ID')
+        chosen_id = photo_id or (title.replace(' ', '_') if title is not _MISSING_TITLE
+                                 else datetime.now().strftime('%y%m%d%H%M%S'))
         if not PHOTO_ID_PATTERN.fullmatch(chosen_id):
             raise ValueError('Photo ID must be 1–24 allowed ASCII characters')
         if type(overwrite) is not bool:
